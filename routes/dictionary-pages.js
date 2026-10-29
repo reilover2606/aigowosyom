@@ -85,6 +85,11 @@ function homePage(res) {
             body: `<main class="content">
     <h1>Dictionary</h1>
     <p class="muted">Search above, or choose a language to browse.</p>
+    ${
+        languages.some((lang) => lang.word_count > 0)
+            ? '<p><a class="button-link" href="/dictionary/random">🎲 Random word</a></p>'
+            : ""
+    }
     <div class="language-grid">${cards}</div>
 </main>`
         })
@@ -163,9 +168,13 @@ function languagePage(res, language, params) {
     ${language.notes ? `<p class="language-notes">${renderText(language.notes, language.slug)}</p>` : ""}
     <p class="muted">${total} ${total === 1 ? "entry" : "entries"}${
         letter ? ` beginning with “${esc(letter.toUpperCase())}”` : ""
+    }${
+        initials.length
+            ? ` · <a href="/dictionary/random?language=${encodeURIComponent(language.slug)}">Random word</a>`
+            : ""
     }</p>
     ${letterNav}
-    ${list || '<p class="muted">No entries.</p>'}
+    ${list ? `<div class="word-columns">${list}</div>` : '<p class="muted">No entries.</p>'}
     ${pager}
 </main>`
         })
@@ -223,7 +232,9 @@ function renderEntry(word, language, index, multiple) {
         ? `<ol class="senses">${word.senses
               .map((definition) => `<li>${renderText(definition, language.slug)}</li>`)
               .join("")}</ol>`
-        : '<p class="muted">No definition yet.</p>';
+        : word.variantOf.length
+          ? "" // a pure variant is described by its "Variant of:" line below
+          : '<p class="muted">No definition yet.</p>';
 
     sections.push(
         `<${innerTag}>${esc(capitalize(word.pos || "Entry"))}</${innerTag}>${headwordLine}${senses}`
@@ -451,6 +462,33 @@ module.exports = async function dictionaryPages(req, res, url) {
 
     if (first === "editor" && parts.length === 1) {
         editorPage(res);
+        return true;
+    }
+
+    // /dictionary/random[?language=<slug>] -> a random entry
+    if (first === "random" && parts.length === 1) {
+        const slug = url.searchParams.get("language");
+        let languageId = null;
+
+        if (slug) {
+            const scope = dict.getLanguageBySlug(slug);
+            if (!scope) {
+                throw new HttpError(404, `No language “${slug}”`);
+            }
+            languageId = scope.id;
+        }
+
+        const word = dict.randomWord(languageId);
+        // Never cache: each visit should pick a new word.
+        res.setHeader("Cache-Control", "no-store");
+        redirect(
+            res,
+            word
+                ? entryUrl(word.language_slug, word.headword)
+                : slug
+                  ? languageUrl(slug)
+                  : "/dictionary"
+        );
         return true;
     }
 

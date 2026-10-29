@@ -332,3 +332,33 @@ button.primary:hover:not(:disabled) {
 button.danger {
     color: #b32424;
 }
+
+.button-link {
+    display: inline-block;
+    padding: 6px 14px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--accent);
+    color: white;
+    text-decoration: none;
+}
+
+.button-link:hover {
+    background: #3d6a4a;
+}
+
+/* Language index: two columns when there is room. */
+@media (min-width: 760px) {
+    .word-columns {
+        column-count: 2;
+        column-gap: 36px;
+    }
+
+    .word-columns .letter-heading {
+        break-after: avoid;
+    }
+
+    .word-columns li {
+        break-inside: avoid;
+    }
+}
