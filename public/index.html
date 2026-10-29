@@ -190,7 +190,6 @@
 		width: 100%;
 		min-width: 600px;
 		height: 55px;
-		#border: 1px solid #999;
 	}
 
 	.era-segment {
@@ -219,9 +218,6 @@
 		font-size: 0.8em;
 		font-weight: bold;
 		white-space: normal;
-		#overflow: hidden;
-		#text-overflow: ellipsis;
-		overflow-wrap: break-all;
 		letter-spacing: -0.75px;
 	}
 
@@ -232,6 +228,130 @@
 		font-size: 0.75em;
 		color: #666;
 		margin-top: 4px;
+	}
+
+	/* Clickable days and note badges */
+	.day[data-day] {
+		position: relative;
+		cursor: pointer;
+	}
+
+	.day[data-day]:hover {
+		outline: 2px solid #8aa882;
+	}
+
+	.note-badge {
+		position: absolute;
+		top: 2px;
+		right: 3px;
+		min-width: 14px;
+		padding: 0 3px;
+		border-radius: 7px;
+		background: #4a7c59;
+		color: white;
+		font-size: 0.65em;
+		line-height: 14px;
+	}
+
+	/* Notes dialog */
+	#notesDialog {
+		width: min(560px, 92vw);
+		max-height: 85vh;
+		border: 1px solid #999;
+		border-radius: 8px;
+		padding: 20px;
+	}
+
+	#notesDialog::backdrop {
+		background: #0006;
+	}
+
+	#notesDialog h2 {
+		margin: 0 0 4px;
+	}
+
+	#notesDialogSub {
+		text-align: center;
+		color: #666;
+		font-size: 0.9em;
+		margin-bottom: 15px;
+	}
+
+	.note {
+		border: 1px solid #ddd;
+		border-radius: 6px;
+		padding: 10px;
+		margin-bottom: 10px;
+		background: #fafafa;
+	}
+
+	.note-title {
+		font-weight: bold;
+		margin-bottom: 4px;
+	}
+
+	.note-body {
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+
+	.note-actions {
+		margin-top: 8px;
+		display: flex;
+		gap: 6px;
+	}
+
+	.note-actions button,
+	.note-form button {
+		font-size: 13px;
+		padding: 4px 10px;
+	}
+
+	.note-form {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		margin-top: 10px;
+	}
+
+	.note-form input,
+	.note-form textarea {
+		font: inherit;
+		font-size: 14px;
+		padding: 6px 8px;
+		box-sizing: border-box;
+		width: 100%;
+	}
+
+	.note-form textarea {
+		min-height: 90px;
+		resize: vertical;
+	}
+
+	.note-form-buttons {
+		display: flex;
+		gap: 6px;
+	}
+
+	.notes-empty, .notes-error {
+		text-align: center;
+		color: #777;
+		margin: 10px 0;
+	}
+
+	.notes-error {
+		color: #a33;
+	}
+
+	.dialog-close {
+		display: block;
+		margin: 15px auto 0;
+	}
+
+	@media print {
+		.note-badge {
+			display: none;
+		}
 	}
 </style>
 </head>
@@ -250,12 +370,26 @@
     <button onclick="window.print()">Print</button>
 </div>
 
-<div id="eraDisplay"></div>
 <div id="calendar"></div>
 
 <div class="legend">
-    Monday-first weeks · Days outside the month are left blank.
+    Monday-first weeks · Days outside the month are left blank · Click a day to view or add notes.
 </div>
+
+<dialog id="notesDialog">
+    <h2 id="notesDialogTitle"></h2>
+    <div id="notesDialogSub"></div>
+    <div id="notesList"></div>
+    <form id="noteForm" class="note-form">
+        <input type="text" id="noteTitleInput" placeholder="Title (optional)" maxlength="200">
+        <textarea id="noteBodyInput" placeholder="Note" required></textarea>
+        <div class="note-form-buttons">
+            <button type="submit" id="noteSubmit">Add note</button>
+            <button type="button" id="noteCancelEdit" hidden>Cancel edit</button>
+        </div>
+    </form>
+    <button type="button" class="dialog-close" id="notesDialogClose">Close</button>
+</dialog>
 
 <script>
 // ======================================================
@@ -309,6 +443,9 @@ const WEEKDAYS = [
 
 let eras = [];
 
+// Last universal year that has an era. Later years have none.
+const ERA_HORIZON_YEAR = 2049;
+
 // Load eras from the external JSON file.
 async function loadEraData() {
     try {
@@ -341,6 +478,11 @@ async function loadEraData() {
 
 function getErasForYear(year) {
     const result = [];
+
+    // Years after the era system's horizon have no era.
+    if (year > ERA_HORIZON_YEAR) {
+        return result;
+    }
 
     for (let i = 0; i < eras.length; i++) {
         const era = eras[i];
@@ -728,7 +870,7 @@ function generateCalendar() {
 	// Get today's date in the user's local time zone.
 	const today = new Date();
 
-	const todayYear = today.getFullYear();
+	const todayGregorianYear = today.getFullYear();
 	const todayMonth = today.getMonth() + 1;
 	const todayDay = today.getDate();
 	
@@ -814,12 +956,15 @@ function generateCalendar() {
             ) {
                 const dayDiv = document.createElement("div");
                 dayDiv.className = "day";
+                dayDiv.dataset.day = currentDay;
+                dayDiv.dataset.monthName = month.name;
+                dayDiv.dataset.dayInMonth = currentDay - firstDay + 1;
 
                 const date = dateFromDayNumber(currentDay);
 				
 				// Check whether this Gregorian date is today.
 				if (
-					date.getUTCFullYear() === todayYear + 1 &&
+					date.getUTCFullYear() === todayGregorianYear &&
 					date.getUTCMonth() + 1 === todayMonth &&
 					date.getUTCDate() === todayDay
 				) {
@@ -877,7 +1022,270 @@ function generateCalendar() {
 
         container.appendChild(monthDiv);
     }
+
+    // Show note counts for every day in this year.
+    loadNoteCounts(
+        firstCivilDay(months[0].start),
+        lastCivilDay(months[months.length - 1].end)
+    );
 }
+
+
+// ======================================================
+// NOTES
+// ======================================================
+
+const notesDialog = document.getElementById("notesDialog");
+const notesList = document.getElementById("notesList");
+const noteForm = document.getElementById("noteForm");
+const noteTitleInput = document.getElementById("noteTitleInput");
+const noteBodyInput = document.getElementById("noteBodyInput");
+const noteSubmit = document.getElementById("noteSubmit");
+const noteCancelEdit = document.getElementById("noteCancelEdit");
+
+let activeDay = null;      // civil day number open in the dialog
+let editingNoteId = null;  // note being edited, or null when adding
+let countsRequest = 0;     // guards against out-of-order responses
+
+async function api(method, url, data) {
+    const options = { method, headers: {} };
+
+    if (data !== undefined) {
+        options.headers["Content-Type"] = "application/json";
+        options.body = JSON.stringify(data);
+    }
+
+    const response = await fetch(url, options);
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(payload.error || `Request failed (${response.status})`);
+    }
+
+    return payload;
+}
+
+function dayCell(day) {
+    return document.querySelector(`.day[data-day="${day}"]`);
+}
+
+function setBadge(day, count) {
+    const cell = dayCell(day);
+
+    if (!cell) {
+        return;
+    }
+
+    let badge = cell.querySelector(".note-badge");
+
+    if (count <= 0) {
+        if (badge) {
+            badge.remove();
+        }
+        return;
+    }
+
+    if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "note-badge";
+        cell.appendChild(badge);
+    }
+
+    badge.textContent = count;
+}
+
+async function loadNoteCounts(fromDay, toDay) {
+    const request = ++countsRequest;
+
+    try {
+        const counts = await api(
+            "GET",
+            `/api/notes/counts?from=${fromDay}&to=${toDay}`
+        );
+
+        // A newer calendar render has superseded this one.
+        if (request !== countsRequest) {
+            return;
+        }
+
+        for (const [day, count] of Object.entries(counts)) {
+            setBadge(day, count);
+        }
+    } catch (error) {
+        console.error("Could not load note counts:", error);
+    }
+}
+
+function resetNoteForm() {
+    editingNoteId = null;
+    noteTitleInput.value = "";
+    noteBodyInput.value = "";
+    noteSubmit.textContent = "Add note";
+    noteCancelEdit.hidden = true;
+}
+
+function renderNotes(notes) {
+    notesList.innerHTML = "";
+
+    if (notes.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "notes-empty";
+        empty.textContent = "No notes for this day yet.";
+        notesList.appendChild(empty);
+        return;
+    }
+
+    for (const note of notes) {
+        const div = document.createElement("div");
+        div.className = "note";
+
+        if (note.title) {
+            const title = document.createElement("div");
+            title.className = "note-title";
+            title.textContent = note.title;
+            div.appendChild(title);
+        }
+
+        const body = document.createElement("div");
+        body.className = "note-body";
+        body.textContent = note.body;
+        div.appendChild(body);
+
+        const actions = document.createElement("div");
+        actions.className = "note-actions";
+
+        const editButton = document.createElement("button");
+        editButton.type = "button";
+        editButton.textContent = "Edit";
+        editButton.addEventListener("click", () => {
+            editingNoteId = note.id;
+            noteTitleInput.value = note.title || "";
+            noteBodyInput.value = note.body;
+            noteSubmit.textContent = "Save changes";
+            noteCancelEdit.hidden = false;
+            noteBodyInput.focus();
+        });
+
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.textContent = "Delete";
+        deleteButton.addEventListener("click", async () => {
+            if (!confirm("Delete this note?")) {
+                return;
+            }
+
+            try {
+                await api("DELETE", `/api/notes/${note.id}`);
+
+                if (editingNoteId === note.id) {
+                    resetNoteForm();
+                }
+
+                await refreshNotes();
+            } catch (error) {
+                showNotesError(error);
+            }
+        });
+
+        actions.appendChild(editButton);
+        actions.appendChild(deleteButton);
+        div.appendChild(actions);
+
+        notesList.appendChild(div);
+    }
+}
+
+function showNotesError(error) {
+    const message = document.createElement("div");
+    message.className = "notes-error";
+    message.textContent = error.message;
+    notesList.prepend(message);
+}
+
+// Reload the open day's notes and update its badge.
+async function refreshNotes() {
+    const day = activeDay;
+    const notes = await api("GET", `/api/notes?day=${day}`);
+
+    if (day !== activeDay) {
+        return;
+    }
+
+    renderNotes(notes);
+    setBadge(day, notes.length);
+}
+
+async function openNotes(cell) {
+    activeDay = Number(cell.dataset.day);
+    resetNoteForm();
+
+    const year = document.getElementById("yearInput").value;
+    const weekday = WEEKDAYS[weekdayIndex(activeDay)];
+
+    document.getElementById("notesDialogTitle").textContent =
+        `${cell.dataset.monthName} ${cell.dataset.dayInMonth}`;
+    document.getElementById("notesDialogSub").textContent =
+        `Year ${year} · ${weekday}, ${formatDate(activeDay)}`;
+
+    notesList.textContent = "Loading…";
+    notesDialog.showModal();
+
+    try {
+        await refreshNotes();
+    } catch (error) {
+        notesList.textContent = "";
+        showNotesError(error);
+    }
+}
+
+noteForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const data = {
+        title: noteTitleInput.value,
+        body: noteBodyInput.value
+    };
+
+    try {
+        if (editingNoteId === null) {
+            await api("POST", "/api/notes", { day: activeDay, ...data });
+        } else {
+            await api("PUT", `/api/notes/${editingNoteId}`, data);
+        }
+
+        resetNoteForm();
+        await refreshNotes();
+    } catch (error) {
+        showNotesError(error);
+    }
+});
+
+noteCancelEdit.addEventListener("click", resetNoteForm);
+
+document.getElementById("notesDialogClose").addEventListener(
+    "click",
+    () => notesDialog.close()
+);
+
+// Close when clicking the backdrop.
+notesDialog.addEventListener("click", (event) => {
+    if (event.target === notesDialog) {
+        notesDialog.close();
+    }
+});
+
+notesDialog.addEventListener("close", () => {
+    activeDay = null;
+});
+
+// Delegated click handler for all day cells.
+document.getElementById("calendar").addEventListener("click", (event) => {
+    const cell = event.target.closest(".day[data-day]");
+
+    if (cell) {
+        openNotes(cell);
+    }
+});
 
 
 // Generate the initial calendar on page load.
