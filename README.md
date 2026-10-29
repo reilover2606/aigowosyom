@@ -32,7 +32,8 @@ Everything lives in one SQLite file, `data/worldbuilding.db` (created on first r
 - **Links in text:** in definitions, etymology notes and ancestry notes, write `[[word]]` (same language), `[[slug:word]]`, or `[[slug:word|display text]]`. Links to entries that don't exist yet are shown in red.
 - **Search** matches headwords, sinographs and English definitions, ignores diacritics (`o` finds `ō`) and matches prefixes. An unambiguous exact headword match goes straight to its entry.
 - **Alphabetical order** is by headword with diacritics folded and lowercased.
-- **Reserved slugs:** `editor`, `search`, `api`.
+- **Reserved slugs:** `editor`, `search`, `random`, `api`.
+- **Random word:** `/dictionary/random` (any language) or `/dictionary/random?language=<slug>`, linked from the dictionary home and each language page.
 - **Proto-languages** are ordinary languages flagged "reconstructed"; their headwords display with a leading `*`.
 - **Gender** (masculine/feminine/neuter) is only offered for languages flagged "has grammatical gender".
 
