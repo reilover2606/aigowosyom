@@ -1,0 +1,16 @@
+{
+  "name": "aigowosyom",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Worldbuilding data suite: calendar, notes, and more to come",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.0.0"
+  }
+}
