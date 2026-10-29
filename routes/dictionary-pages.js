@@ -18,6 +18,8 @@ const {
     layout,
     renderText
 } = require("../lib/render");
+const { languageStats } = require("../lib/stats");
+const charts = require("../lib/charts");
 
 const PAGE_SIZE = 200;
 const SEARCH_LIMIT = 100;
@@ -154,19 +156,7 @@ function languagePage(res, language, params) {
     </nav>`
             : "";
 
-    sendHtml(
-        res,
-        200,
-        layout({
-            title: `${language.name} – Dictionary`,
-            search: { q: "" },
-            body: `<main class="content">
-    <p class="crumbs"><a href="/dictionary">Dictionary</a> › ${esc(language.name)}</p>
-    <h1>${esc(language.name)}${
-        language.is_proto ? ' <span class="badge">reconstructed</span>' : ""
-    }</h1>
-    ${language.notes ? `<p class="language-notes">${renderText(language.notes, language.slug)}</p>` : ""}
-    <p class="muted">${total} ${total === 1 ? "entry" : "entries"}${
+    const wordsTab = `<p class="muted">${total} ${total === 1 ? "entry" : "entries"}${
         letter ? ` beginning with “${esc(letter.toUpperCase())}”` : ""
     }${
         initials.length
@@ -175,10 +165,174 @@ function languagePage(res, language, params) {
     }</p>
     ${letterNav}
     ${list ? `<div class="word-columns">${list}</div>` : '<p class="muted">No entries.</p>'}
-    ${pager}
+    ${pager}`;
+
+    sendHtml(res, 200, languageShell(language, "words", wordsTab));
+}
+
+// Header and tabs shared by the language page's Words and Statistics views.
+function languageShell(language, activeTab, content) {
+    const base = languageUrl(language.slug);
+
+    return layout({
+        title: `${language.name}${activeTab === "stats" ? " statistics" : ""} – Dictionary`,
+        search: { q: "" },
+        body: `<main class="content">
+    <p class="crumbs"><a href="/dictionary">Dictionary</a> › ${esc(language.name)}</p>
+    <h1>${esc(language.name)}${
+        language.is_proto ? ' <span class="badge">reconstructed</span>' : ""
+    }</h1>
+    ${language.notes ? `<p class="language-notes">${renderText(language.notes, language.slug)}</p>` : ""}
+    <nav class="tabs" aria-label="Language views">
+        <a href="${base}"${activeTab === "words" ? ' class="active" aria-current="page"' : ""}>Words</a>
+        <a href="${base}?view=stats"${activeTab === "stats" ? ' class="active" aria-current="page"' : ""}>Statistics</a>
+    </nav>
+    ${content}
 </main>`
-        })
-    );
+    });
+}
+
+function ratioText(consonants, vowels) {
+    return vowels ? `${(consonants / vowels).toFixed(2)} : 1` : "–";
+}
+
+function statsPage(res, language) {
+    const stats = languageStats(language.id);
+
+    if (stats.entries === 0) {
+        sendHtml(
+            res,
+            200,
+            languageShell(language, "stats", '<p class="muted">No entries yet, so there is nothing to chart.</p>')
+        );
+        return;
+    }
+
+    const lettersTotal = stats.consonants + stats.vowels;
+    const wordLink = (word) =>
+        word
+            ? `<a href="${entryUrl(language.slug, word.headword)}" lang="${esc(language.slug)}">${esc(
+                  displayHeadword(word.headword, language.is_proto)
+              )}</a> <span class="muted">(${word.length})</span>`
+            : "–";
+
+    const tile = (label, value, detail = "") => `<div class="stat-tile">
+        <div class="stat-value">${value}</div>
+        <div class="stat-label">${esc(label)}</div>
+        ${detail ? `<div class="stat-detail">${detail}</div>` : ""}
+    </div>`;
+
+    const { withDefinition, withEtymology, withPronunciation } = stats.completeness;
+    const n = stats.entries;
+
+    const card = (title, body, note = "") => `<section class="chart-card">
+        <h2>${esc(title)}</h2>
+        ${note ? `<p class="chart-note">${note}</p>` : ""}
+        ${body}
+    </section>`;
+
+    const html = `<div class="viz">
+    <div class="stat-tiles">
+        ${tile("Entries", stats.entries.toLocaleString("en-US"))}
+        ${tile(
+            "Average letters per word",
+            stats.avgLength === null ? "–" : stats.avgLength.toFixed(1),
+            stats.medianLength === null ? "" : `median ${stats.medianLength}`
+        )}
+        ${tile(
+            "Consonant : vowel",
+            ratioText(stats.consonants, stats.vowels),
+            lettersTotal ? `${((stats.consonants / lettersTotal) * 100).toFixed(1)}% consonants` : ""
+        )}
+        ${tile(
+            "Senses per entry",
+            stats.avgSenses === null ? "–" : stats.avgSenses.toFixed(2)
+        )}
+        ${tile("Longest word", wordLink(stats.longest))}
+        ${tile("Shortest word", wordLink(stats.shortest))}
+    </div>
+
+    <div class="chart-grid">
+        ${card(
+            "Parts of speech",
+            charts.pieChart(stats.partsOfSpeech, { ariaLabel: `Entries in ${language.name} by part of speech` })
+        )}
+        ${card(
+            "Consonants and vowels",
+            charts.splitBar(
+                { label: "consonants", count: stats.consonants },
+                { label: "vowels", count: stats.vowels }
+            ),
+            "Latin letters only, with <em>y</em> counted as a consonant."
+        )}
+        ${
+            stats.genders.length
+                ? card(
+                      "Grammatical gender",
+                      charts.pieChart(stats.genders, { ariaLabel: `Entries in ${language.name} by gender` })
+                  )
+                : ""
+        }
+    </div>
+
+    ${card(
+        "Word length",
+        charts.columnChart(stats.lengthHistogram, {
+            ariaLabel: `Number of entries in ${language.name} by length in letters`,
+            unit: "words"
+        }),
+        "Entries by number of letters."
+    )}
+
+    ${card(
+        "Letter frequency",
+        `${charts.columnChart(
+            stats.letters.map((item) => ({ ...item, cls: item.vowel ? 2 : 1 })),
+            { ariaLabel: `Letter frequency in ${language.name} headwords`, unit: "letters" }
+        )}
+        <ul class="legend legend-inline">
+            <li><span class="swatch sw-1"></span><span class="legend-label">consonant or other</span></li>
+            <li><span class="swatch sw-2"></span><span class="legend-label">vowel</span></li>
+        </ul>`,
+        "Counted across all headwords, diacritics folded, so digraphs such as <em>kh</em> count as two letters."
+    )}
+
+    <div class="chart-grid">
+        ${card(
+            "Descends from",
+            charts.barList(
+                stats.sources.map((item) => ({
+                    label: item.name,
+                    count: item.n,
+                    href: languageUrl(item.slug)
+                }))
+            ),
+            "Entries here with an ancestral form in each language."
+        )}
+        ${card(
+            "Passed on to",
+            charts.barList(
+                stats.influence.map((item) => ({
+                    label: item.name,
+                    count: item.n,
+                    href: languageUrl(item.slug)
+                }))
+            ),
+            "Entries in other languages descended from entries here."
+        )}
+    </div>
+
+    ${card(
+        "Completeness",
+        `<ul class="bar-list">
+            ${charts.meter("Has a definition", withDefinition, n)}
+            ${charts.meter("Has an etymology or ancestor", withEtymology, n)}
+            ${charts.meter("Has a pronunciation", withPronunciation, n)}
+        </ul>`
+    )}
+</div>`;
+
+    sendHtml(res, 200, languageShell(language, "stats", html));
 }
 
 function renderEntry(word, language, index, multiple) {
@@ -507,6 +661,8 @@ module.exports = async function dictionaryPages(req, res, url) {
     if (parts.length === 1) {
         if (!url.pathname.endsWith("/")) {
             redirect(res, url.pathname + "/" + url.search, 301);
+        } else if (url.searchParams.get("view") === "stats") {
+            statsPage(res, language);
         } else {
             languagePage(res, language, url.searchParams);
         }
