@@ -1,0 +1,334 @@
+:root {
+    --bg: #f8f9fa;
+    --panel: #fff;
+    --border: #c8ccd1;
+    --text: #202122;
+    --muted: #72777d;
+    --link: #3366cc;
+    --missing: #d33;
+    --accent: #4a7c59;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+}
+
+a {
+    color: var(--link);
+}
+
+a.missing {
+    color: var(--missing);
+}
+
+.muted {
+    color: var(--muted);
+}
+
+/* ---- Top bar (shared by dictionary and editor) ---- */
+
+.topbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 20px;
+    padding: 8px 20px;
+    background: var(--accent);
+    color: white;
+}
+
+.topbar a {
+    color: white;
+    text-decoration: none;
+}
+
+.topbar .brand {
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+.topbar nav {
+    display: flex;
+    gap: 6px;
+}
+
+.topbar nav a {
+    padding: 4px 12px;
+    border-radius: 4px;
+}
+
+.topbar nav a:hover {
+    background: #ffffff33;
+}
+
+.topbar nav a.active {
+    background: white;
+    color: var(--accent);
+    font-weight: bold;
+}
+
+.topbar-search {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+}
+
+.topbar-search input {
+    width: 220px;
+}
+
+/* ---- Public pages ---- */
+
+.content {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+    background: var(--panel);
+    min-height: calc(100vh - 50px);
+}
+
+.content h1 {
+    margin: 10px 0;
+    font-family: Georgia, serif;
+    font-weight: normal;
+    font-size: 2em;
+}
+
+.crumbs {
+    margin: 0;
+    font-size: 0.85em;
+    color: var(--muted);
+}
+
+.also {
+    margin: 0;
+    font-size: 0.9em;
+}
+
+.language-heading {
+    margin: 20px 0 10px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+    font-family: Georgia, serif;
+    font-weight: normal;
+    font-size: 1.6em;
+}
+
+.entry h3 {
+    margin: 20px 0 6px;
+    font-size: 1.2em;
+}
+
+.entry h4 {
+    margin: 16px 0 6px;
+    font-size: 1.05em;
+}
+
+.entry > h3:first-child,
+.entry > h4:first-child {
+    margin-top: 10px;
+}
+
+.headword-line {
+    margin: 6px 0;
+}
+
+.headword {
+    font-size: 1.15em;
+}
+
+.sinographs {
+    margin: 0 4px;
+}
+
+.gender {
+    font-style: italic;
+    color: var(--muted);
+    text-decoration: none;
+}
+
+.pronunciation {
+    font-family: "Charis SIL", "Doulos SIL", "Gentium Plus", serif;
+}
+
+.senses {
+    margin: 6px 0 10px;
+    padding-left: 28px;
+}
+
+.senses li {
+    margin-bottom: 4px;
+}
+
+.relation {
+    margin: 6px 0;
+}
+
+.badge,
+.lang-tag,
+.pos-tag {
+    display: inline-block;
+    padding: 0 6px;
+    border-radius: 3px;
+    font-size: 0.7em;
+    vertical-align: middle;
+}
+
+.badge {
+    background: #eaecf0;
+    color: var(--muted);
+}
+
+.lang-tag {
+    background: #e3efe6;
+    color: #2f5a3b;
+}
+
+.pos-tag {
+    background: #eaecf0;
+    color: #54595d;
+    font-style: italic;
+}
+
+.language-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.language-card {
+    display: flex;
+    flex-direction: column;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-decoration: none;
+    color: inherit;
+}
+
+.language-card:hover {
+    border-color: var(--accent);
+    background: #f4f8f5;
+}
+
+.language-card-name {
+    font-weight: bold;
+    color: var(--link);
+}
+
+.language-card-meta {
+    font-size: 0.85em;
+    color: var(--muted);
+}
+
+.letters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 12px 0;
+}
+
+.letters a {
+    padding: 2px 9px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    text-decoration: none;
+}
+
+.letters a.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+
+.letter-heading {
+    margin: 22px 0 4px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid var(--border);
+    font-size: 1.3em;
+}
+
+.word-list {
+    margin: 4px 0;
+    padding-left: 20px;
+}
+
+.word-list li {
+    margin: 2px 0;
+}
+
+.gloss {
+    color: var(--muted);
+    font-size: 0.9em;
+}
+
+.pager {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin: 20px 0;
+}
+
+.search-filter {
+    margin: 10px 0;
+}
+
+/* ---- Forms ---- */
+
+input,
+select,
+textarea,
+button {
+    font: inherit;
+    font-size: 14px;
+}
+
+input,
+select,
+textarea {
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: white;
+    color: var(--text);
+}
+
+button {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #f3f4f5;
+    cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+    background: #e6e8ea;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+
+button.primary:hover:not(:disabled) {
+    background: #3d6a4a;
+}
+
+button.danger {
+    color: #b32424;
+}

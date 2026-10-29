@@ -1,0 +1,311 @@
+.editor {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 16px;
+    padding: 16px;
+    max-width: 1300px;
+    margin: 0 auto;
+    align-items: start;
+}
+
+@media (max-width: 800px) {
+    .editor {
+        grid-template-columns: 1fr;
+    }
+}
+
+.panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+}
+
+/* ---- Sidebar ---- */
+
+.sidebar {
+    position: sticky;
+    top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: calc(100vh - 24px);
+}
+
+.sidebar select,
+.sidebar input {
+    width: 100%;
+}
+
+.row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.row > .grow {
+    flex: 1;
+    min-width: 0;
+}
+
+.word-items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 120px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.word-items li {
+    padding: 5px 8px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+}
+
+.word-items li:hover {
+    background: #f4f8f5;
+}
+
+.word-items li.selected {
+    background: #e3efe6;
+}
+
+.word-items .hw {
+    font-weight: bold;
+}
+
+.word-items .sub {
+    display: block;
+    font-size: 0.8em;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.list-footer {
+    font-size: 0.85em;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* ---- Form ---- */
+
+.form-title {
+    margin: 0 0 12px;
+    font-size: 1.3em;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 12px;
+}
+
+.field > label,
+.field > .label {
+    font-size: 0.85em;
+    font-weight: bold;
+    color: #54595d;
+}
+
+.field .hint {
+    font-size: 0.8em;
+    color: var(--muted);
+    font-weight: normal;
+}
+
+.field input,
+.field textarea,
+.field select {
+    width: 100%;
+}
+
+.field textarea {
+    min-height: 90px;
+    resize: vertical;
+}
+
+.field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0 12px;
+}
+
+.list-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.list-row {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+}
+
+.list-row > .grow {
+    flex: 1;
+    min-width: 0;
+}
+
+.list-row textarea {
+    min-height: 44px;
+}
+
+.list-row .picked {
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #f4f8f5;
+}
+
+.list-row .picked .lang {
+    color: var(--muted);
+    font-size: 0.85em;
+}
+
+.list-row .small-button {
+    padding: 4px 8px;
+}
+
+.sense-number {
+    padding-top: 7px;
+    width: 18px;
+    text-align: right;
+    color: var(--muted);
+}
+
+.placeholder-box {
+    padding: 10px;
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    color: var(--muted);
+    font-size: 0.9em;
+}
+
+.form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.form-actions .spacer {
+    flex: 1;
+}
+
+.status {
+    font-size: 0.9em;
+}
+
+.status.error {
+    color: #b32424;
+}
+
+.status.ok {
+    color: #2f5a3b;
+}
+
+.empty-state {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--muted);
+}
+
+/* ---- Word picker ---- */
+
+.picker {
+    position: relative;
+}
+
+.picker-results {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin: 2px 0 0;
+    padding: 0;
+    list-style: none;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 4px 10px #0002;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.picker-results li {
+    padding: 5px 8px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+}
+
+.picker-results li:hover,
+.picker-results li.active {
+    background: #e3efe6;
+}
+
+.picker-results .sub {
+    display: block;
+    font-size: 0.8em;
+    color: var(--muted);
+}
+
+.picker-results .none {
+    color: var(--muted);
+    cursor: default;
+}
+
+/* ---- Language dialog ---- */
+
+dialog {
+    width: min(480px, 92vw);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+}
+
+dialog::backdrop {
+    background: #0006;
+}
+
+dialog h2 {
+    margin: 0 0 12px;
+}
+
+.check {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.check input {
+    width: auto;
+}
+
+/* Rows holding a picked word plus a kind selector and optional note */
+.list-row > select {
+    width: auto;
+    flex: none;
+}
+
+.list-row > input[type="text"] {
+    flex: 1 1 140px;
+    min-width: 0;
+}
+
+.list-row > .grow:first-child {
+    flex: 2 1 180px;
+}
