@@ -19,6 +19,7 @@
         items: [],
         total: 0,
         filter: "",
+        sort: recallSort(),
         draft: null,
         dirty: false
     };
@@ -84,6 +85,10 @@
         return language && language.is_proto ? `*${headword}` : headword;
     }
 
+    function formatWhen(timestamp) {
+        return new Date(timestamp).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+    }
+
     function markDirty() {
         state.dirty = true;
     }
@@ -111,6 +116,20 @@
         try {
             localStorage.setItem("dictionary.languageId", String(languageId));
         } catch { /* storage unavailable */ }
+    }
+
+    function rememberSort(sort) {
+        try {
+            localStorage.setItem("dictionary.sort", sort);
+        } catch { /* storage unavailable */ }
+    }
+
+    function recallSort() {
+        try {
+            return localStorage.getItem("dictionary.sort") === "updated" ? "updated" : "alpha";
+        } catch {
+            return "alpha";
+        }
     }
 
     function recall() {
@@ -252,6 +271,17 @@
         }
     });
 
+    const sortSelect = h("select", {
+        "aria-label": "Sort words",
+        onchange: () => {
+            state.sort = sortSelect.value;
+            rememberSort(state.sort);
+            loadList();
+        }
+    },
+    h("option", { value: "alpha", selected: state.sort === "alpha" }, "Sort: alphabetical"),
+    h("option", { value: "updated", selected: state.sort === "updated" }, "Sort: last updated"));
+
     const listEl = h("ul", { class: "word-items" });
     const listFooter = h("div", { class: "list-footer" });
     const newWordButton = h("button", { class: "primary", type: "button", onclick: newWord }, "New word");
@@ -271,6 +301,7 @@
             languageSelect,
             h("div", { class: "row" }, editLanguageButton, newLanguageButton),
             filterInput,
+            sortSelect,
             newWordButton,
             listEl,
             listFooter
@@ -294,6 +325,7 @@
         editLanguageButton.disabled = !currentLanguage();
         newWordButton.disabled = !currentLanguage();
         filterInput.disabled = !currentLanguage();
+        sortSelect.disabled = !currentLanguage();
     }
 
     function renderList() {
@@ -305,7 +337,10 @@
                     onclick: () => openWord(item.id)
                 },
                 h("span", { class: "hw" }, shown(item.headword, language)),
-                h("span", { class: "sub" }, [item.pos, item.gloss].filter(Boolean).join(" · ")))
+                h("span", { class: "sub" }, [item.pos, item.gloss].filter(Boolean).join(" · ")),
+                state.sort === "updated"
+                    ? h("span", { class: "sub when" }, `updated ${formatWhen(item.updated_at)}`)
+                    : null)
             )
         );
 
@@ -337,7 +372,8 @@
         const mine = ++listRequest;
         const params = new URLSearchParams({
             language: state.languageId,
-            offset: append ? state.items.length : 0
+            offset: append ? state.items.length : 0,
+            sort: state.sort
         });
         if (state.filter) {
             params.set("q", state.filter);

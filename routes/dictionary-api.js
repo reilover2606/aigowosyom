@@ -60,18 +60,19 @@ module.exports = async function dictionaryApi(req, res, url) {
 
     // ---- Words --------------------------------------------------------
     if (resource === "words") {
-        // GET /words?language=&q=&offset=&limit=
+        // GET /words?language=&q=&sort=alpha|updated&offset=&limit=
         if (parts.length === 1 && method === "GET") {
             const languageId = parseInteger(params.get("language"), "language");
             const q = (params.get("q") || "").trim();
             const limit = clampInt(params.get("limit"), 200, 1, 500);
             const offset = clampInt(params.get("offset"), 0, 0, 1e9);
+            const sort = params.get("sort") === "updated" ? "updated" : "alpha";
 
             if (q) {
-                const items = dict.searchWords(q, { languageId, limit: 200 });
+                const items = dict.searchWords(q, { languageId, limit: 200, order: sort });
                 sendJson(res, 200, { total: items.length, items });
             } else {
-                sendJson(res, 200, dict.listWords(languageId, { limit, offset }));
+                sendJson(res, 200, dict.listWords(languageId, { limit, offset, sort }));
             }
             return true;
         }

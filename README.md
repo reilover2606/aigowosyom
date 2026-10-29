@@ -31,6 +31,9 @@ Everything lives in one SQLite file, `data/worldbuilding.db` (created on first r
 - **Entry URLs:** `/dictionary/<language-slug>/<headword>`. Homographs (same spelling, same language) share one page as "Etymology 1, 2, …".
 - **Links in text:** in definitions, etymology notes and ancestry notes, write `[[word]]` (same language), `[[slug:word]]`, or `[[slug:word|display text]]`. Links to entries that don't exist yet are shown in red.
 - **Search** matches headwords, sinographs and English definitions, ignores diacritics (`o` finds `ō`) and matches prefixes. An unambiguous exact headword match goes straight to its entry.
+- **Live suggestions:** the search box in the top bar shows matching entries (with their language) as you type; arrow keys and Enter work, and without JavaScript it still submits to the results page.
+- **Statistics:** each language page has a Words / Statistics tab (`/dictionary/<slug>/?view=stats`): average and median letters per word, consonant : vowel ratio (Latin letters only, `y` counts as a consonant), parts-of-speech pie, word-length histogram, letter frequency, gender split, etymological sources and influence on other languages, and entry completeness. Letters are counted on the diacritic-folded headword, so digraphs like `kh` count as two.
+- **Editor word list** can be sorted alphabetically or by last updated (your choice is remembered).
 - **Alphabetical order** is by headword with diacritics folded and lowercased.
 - **Reserved slugs:** `editor`, `search`, `random`, `api`.
 - **Random word:** `/dictionary/random` (any language) or `/dictionary/random?language=<slug>`, linked from the dictionary home and each language page.
