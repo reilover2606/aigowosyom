@@ -354,3 +354,19 @@ dialog h2 {
 .row button {
     white-space: nowrap;
 }
+
+/* Built-in (generated) entries */
+
+fieldset.locked-fields {
+    margin: 0;
+    padding: 0;
+    border: none;
+    min-width: 0;
+}
+
+fieldset.locked-fields input:disabled,
+fieldset.locked-fields textarea:disabled,
+fieldset.locked-fields select:disabled {
+    background: #f3f2ee;
+    color: #4d4c48;
+}

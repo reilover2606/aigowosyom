@@ -684,6 +684,9 @@
     root.replaceChildren(sidebarEl, formEl);
 
     // ---- sidebar ----
+    // Pages in the built-in Books category are books.
+    const noun = () => (currentCategory() && currentCategory().system_key === "books" ? "book" : "page");
+
     function renderCategorySelect() {
         categorySelect.replaceChildren(
             ...state.categories.map((c) =>
@@ -696,6 +699,7 @@
         );
 
         const category = currentCategory();
+        newPageButton.textContent = `New ${noun()}`;
         const accent = category ? category.display_color : DEFAULT_COLOR;
         sidebarEl.style.setProperty("--lang-color", accent);
         formEl.style.setProperty("--lang-color", accent);
@@ -720,7 +724,7 @@
         );
 
         if (state.items.length === 0) {
-            listEl.append(h("li", { class: "muted" }, state.filter ? "No matches." : "No pages yet."));
+            listEl.append(h("li", { class: "muted" }, state.filter ? "No matches." : `No ${noun()}s yet.`));
         }
 
         const more = !state.filter && state.items.length < state.total;
@@ -794,7 +798,8 @@
             categoryId: state.categoryId,
             body: "",
             isEra: false,
-            era: null
+            era: null,
+            book: null
         };
     }
 
@@ -807,7 +812,8 @@
             categoryId: page.category_id,
             body: page.body,
             isEra: Boolean(page.is_era),
-            era: page.era || null
+            era: page.era || null,
+            book: page.book || null
         };
     }
 
@@ -860,7 +866,7 @@
         if (!draft) {
             formEl.replaceChildren(
                 h("div", { class: "empty-state" },
-                    `Select a page on the left, or click “New page” to add one to ${category.name}.`)
+                    `Select a ${noun()} on the left, or click “New ${noun()}” to add one to ${category.name}.`)
             );
             return;
         }
@@ -927,7 +933,7 @@
 
         formEl.replaceChildren(
             h("h2", { class: "form-title" },
-                draft.id ? `Edit: ${draft.title}` : "New page",
+                draft.id ? `Edit: ${draft.title}` : `New ${noun()}`,
                 " ",
                 badge(draftCategory.name, draftCategory.display_color, draftCategory.ink)),
 
@@ -948,6 +954,7 @@
             ),
 
             draft.era ? eraNotesPanel(draft.era) : null,
+            draft.book ? bookNotesPanel(draft.book) : null,
 
             h("div", { class: "form-actions" },
                 h("button", { type: "button", class: "primary", onclick: save }, "Save"),
@@ -964,31 +971,62 @@
         );
     }
 
-    // Read-only list of the calendar notes inside an era, by year.
-    function eraNotesPanel(era) {
-        const range = era.endYear === null
-            ? `from year ${era.startYear} on`
-            : `universal years ${era.startYear}–${era.endYear}`;
-
+    // Read-only list of calendar notes grouped by year, shown under the body
+    // of era pages and books. Notes are edited in the calendar.
+    function notesPanel({ label, hint, groups, emptyText, showBook }) {
         return h("div", { class: "field era-notes-panel" },
-            h("span", { class: "label" }, "Calendar notes in this era",
-                h("span", { class: "hint" }, ` — ${range}, in date order. Read-only here: edit them in the calendar.`)),
-            era.groups.length === 0
-                ? h("p", { class: "hint-block" }, "No calendar notes fall within this era yet.")
-                : era.groups.flatMap((group) => [
+            h("span", { class: "label" }, label, h("span", { class: "hint" }, ` — ${hint}`)),
+            groups.length === 0
+                ? h("p", { class: "hint-block" }, emptyText)
+                : groups.flatMap((group) => [
                     h("h4", { class: "era-year" },
-                        h("a", { href: `/calendar/?year=${group.year}`, target: "_blank" }, `Year ${group.year}`)),
+                        h("a", {
+                            href: `/calendar/?year=${group.year}`,
+                            target: "_blank",
+                            title: `Universal year ${group.year}`
+                        }, group.label)),
                     h("ul", { class: "era-note-list" },
                         ...group.notes.map((note) =>
                             h("li", {},
                                 h("div", { class: "era-note-date" },
-                                    h("a", { class: "conlang", href: `/calendar/?year=${group.year}`, target: "_blank" },
-                                        `${note.monthName} ${note.dayInMonth}`),
+                                    h("a", {
+                                        class: note.monthIsNative ? "conlang" : undefined,
+                                        href: `/calendar/?year=${group.year}`,
+                                        target: "_blank"
+                                    }, `${note.monthLabel} ${note.dayInMonth}`),
                                     h("span", { class: "muted" }, ` · ${note.gregorian}`)),
                                 note.title ? h("div", { class: "era-note-title" }, note.title) : null,
-                                h("div", { class: "era-note-body" }, note.body))))
+                                h("div", { class: "era-note-body" }, note.body),
+                                showBook && note.book
+                                    ? h("div", { class: "era-note-book" }, "📖 ",
+                                        h("a", { href: note.book.url, target: "_blank" }, note.book.title))
+                                    : null)))
                 ])
         );
+    }
+
+    function eraNotesPanel(era) {
+        const range = era.lengthYears === null
+            ? `${era.name} from year 1 on`
+            : `${era.name} years 1–${era.lengthYears}`;
+
+        return notesPanel({
+            label: "Calendar notes in this era",
+            hint: `${range}, in date order. Read-only here: edit them in the calendar.`,
+            groups: era.groups,
+            emptyText: "No calendar notes fall within this era yet.",
+            showBook: true
+        });
+    }
+
+    function bookNotesPanel(book) {
+        return notesPanel({
+            label: "Notes in this book",
+            hint: `${book.count} ${book.count === 1 ? "note" : "notes"}, in date order. Read-only here: ` +
+                "assign notes to this book from the calendar.",
+            groups: book.groups,
+            emptyText: "No notes have been added to this book yet. Assign a note to it from the calendar."
+        });
     }
 
     async function save() {
@@ -1024,7 +1062,11 @@
     async function removePage() {
         const draft = state.draft;
 
-        if (!confirm(`Delete “${draft.title}”? This can't be undone.`)) {
+        const unassign = draft.book && draft.book.count
+            ? ` Its ${draft.book.count} ${draft.book.count === 1 ? "note stays" : "notes stay"} in the calendar, just no longer assigned to a book.`
+            : "";
+
+        if (!confirm(`Delete “${draft.title}”? This can't be undone.${unassign}`)) {
             return;
         }
 

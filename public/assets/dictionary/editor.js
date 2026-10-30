@@ -364,7 +364,9 @@
                     onclick: () => openWord(item.id)
                 },
                 h("span", { class: "hw conlang" }, shown(item.headword, language)),
-                h("span", { class: "sub" }, [item.pos, item.gloss].filter(Boolean).join(" · ")),
+                h("span", { class: "sub" },
+                    item.era_start_year != null ? "🔒 built in · " : "",
+                    [item.pos, item.gloss].filter(Boolean).join(" · ")),
                 state.sort === "updated"
                     ? h("span", { class: "sub when" }, `updated ${formatWhen(item.updated_at)}`)
                     : null)
@@ -458,6 +460,9 @@
 
     function draftFromWord(word) {
         return {
+            // Built-in entries generated from the calendar's eras are read-only.
+            locked: word.era_start_year !== null && word.era_start_year !== undefined,
+            lorePages: word.lore_pages || [],
             id: word.id,
             headword: word.headword,
             pos: word.pos || "",
@@ -844,9 +849,39 @@
                     : null,
                 statusEl,
                 h("span", { class: "spacer" }),
-                draft.id ? h("button", { type: "button", class: "danger", onclick: removeWord }, "Delete") : null
+                draft.id && !draft.locked ? h("button", { type: "button", class: "danger", onclick: removeWord }, "Delete") : null
             )
         );
+
+        // A built-in entry: show everything read-only, except the etymology
+        // notes (the only part that can be edited), with a pointer to the lore
+        // page where the rest of its text lives.
+        if (draft.locked) {
+            const title = formEl.querySelector(".form-title");
+            const actions = formEl.querySelector(".form-actions");
+
+            for (const node of [...formEl.children]) {
+                if (node === title || node === actions || node.querySelector("[name=etymology]")) {
+                    continue; // title, buttons and the etymology field stay live
+                }
+                const fieldset = h("fieldset", { class: "locked-fields", disabled: true });
+                node.replaceWith(fieldset);
+                fieldset.append(node);
+            }
+
+            const lorePage = draft.lorePages[0];
+            title.after(
+                h("p", { class: "hint-block" },
+                    "🔒 Built in: this entry is generated from the calendar's eras. Only the etymology notes can be edited here; ",
+                    lorePage
+                        ? ["the rest comes from its lore page: ",
+                            h("a", {
+                                href: `/lore/${encodeURIComponent(lorePage.category_slug)}/${encodeURIComponent(lorePage.slug)}`,
+                                target: "_blank"
+                            }, `${lorePage.category_name} › ${lorePage.title} ↗`)]
+                        : "the rest comes from eras.json.")
+            );
+        }
     }
 
     async function save() {
@@ -1006,7 +1041,7 @@
                 }, "Save"),
                 h("button", { type: "button", onclick: () => dialog.close() }, "Cancel"),
                 h("span", { class: "spacer" }),
-                editing
+                editing && !language.system_key
                     ? h("button", {
                         type: "button", class: "danger",
                         onclick: async () => {

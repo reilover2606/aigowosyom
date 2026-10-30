@@ -5,6 +5,7 @@
 const lore = require("../lib/lore");
 const dict = require("../lib/dictionary");
 const eras = require("../lib/eras");
+const books = require("../lib/books");
 const { HttpError, sendHtml, redirect, parseInteger } = require("../lib/http");
 const { esc, langVars, langBadge, layout, renderText, renderLoreHtml } = require("../lib/render");
 const { stripLinkSyntax } = require("../lib/html");
@@ -96,36 +97,59 @@ function categoryPage(res, category) {
     );
 }
 
-// The calendar notes inside an era, grouped by year (years without notes
-// are left out), with the calendar date each one fell on.
-function eraNotesHtml(era) {
-    const span = era.endYear === null
-        ? `from year ${era.startYear} on`
-        : `universal years ${era.startYear}–${era.endYear}`;
-
-    const intro = `<p class="muted">Notes written in the <a href="/calendar/?year=${era.startYear}">calendar</a> for ${span}, in date order.
-        A year shared with a neighbouring era appears in both. Edit them in the calendar.</p>`;
-
-    if (era.groups.length === 0) {
-        return `<section class="era-notes"><h2>Calendar notes</h2>${intro}<p class="muted">No calendar notes fall within this era yet.</p></section>`;
+// Calendar notes grouped by year (years without notes are left out), each
+// with the calendar date it fell on. Used under an era page's text and under
+// a book's text. `groups` come from lib/notes.js; `showBook` adds a link to
+// the book a note belongs to (not needed on the book's own page).
+function notesSectionHtml({ heading, intro, emptyText, groups, showBook = false }) {
+    if (groups.length === 0) {
+        return `<section class="era-notes"><h2>${esc(heading)}</h2>${intro}<p class="muted">${emptyText}</p></section>`;
     }
 
-    const groups = era.groups
+    const body = groups
         .map(
-            (group) => `<h3 class="era-year"><a href="/calendar/?year=${group.year}">Year ${group.year}</a></h3>
+            (group) => `<h3 class="era-year"><a href="/calendar/?year=${group.year}" title="Universal year ${group.year}">${esc(group.label)}</a></h3>
         <ul class="era-note-list">${group.notes
             .map(
                 (note) => `<li>
-            <div class="era-note-date"><a class="conlang" href="/calendar/?year=${group.year}">${esc(note.monthName)} ${note.dayInMonth}</a> <span class="muted">· ${esc(note.gregorian)}</span></div>
+            <div class="era-note-date"><a${note.monthIsNative ? ' class="conlang"' : ""} href="/calendar/?year=${group.year}">${esc(note.monthLabel)} ${note.dayInMonth}</a> <span class="muted">· ${esc(note.gregorian)}</span></div>
             ${note.title ? `<div class="era-note-title">${esc(note.title)}</div>` : ""}
             <div class="era-note-body">${esc(note.body).replace(/\r?\n/g, "<br>")}</div>
+            ${showBook && note.book ? `<div class="era-note-book">📖 <a href="${esc(note.book.url)}">${esc(note.book.title)}</a></div>` : ""}
         </li>`
             )
             .join("")}</ul>`
         )
         .join("");
 
-    return `<section class="era-notes"><h2>Calendar notes</h2>${intro}${groups}</section>`;
+    return `<section class="era-notes"><h2>${esc(heading)}</h2>${intro}${body}</section>`;
+}
+
+// The notes inside an era.
+function eraNotesHtml(era) {
+    const span = era.lengthYears === null
+        ? `${esc(era.name)} from year 1 on`
+        : `${esc(era.name)} years 1–${era.lengthYears}`;
+
+    return notesSectionHtml({
+        heading: "Calendar notes",
+        intro: `<p class="muted">Notes written in the <a href="/calendar/?year=${era.startYear}">calendar</a> for ${span}, in date order.
+        A year shared with a neighbouring era appears in both. Edit them in the calendar.</p>`,
+        emptyText: "No calendar notes fall within this era yet.",
+        groups: era.groups,
+        showBook: true
+    });
+}
+
+// The notes assigned to a book.
+function bookNotesHtml(book) {
+    return notesSectionHtml({
+        heading: "Notes",
+        intro: `<p class="muted">Notes added to this book from the <a href="/calendar/">calendar</a>, in date order.
+        Add, edit or reassign them there.</p>`,
+        emptyText: "No notes have been added to this book yet. Assign a note to it from the calendar.",
+        groups: book.groups
+    });
 }
 
 function articlePage(res, category, page) {
@@ -142,11 +166,16 @@ function articlePage(res, category, page) {
               .join(" · ")}</p>`
         : "";
 
+    // A page in the Books category is a book: its own text (which may be
+    // blank) is followed by the calendar notes assigned to it.
+    const isBook = category.system_key === books.CATEGORY_KEY;
+    const book = isBook ? books.bookNotes(page.id) : null;
+
     // Era pages show the span they cover and the calendar notes inside it.
     const era = page.era_start_year !== null ? eras.eraNotes(page.era_start_year) : null;
     const eraSpan = era
         ? `<p class="era-span">${
-              era.endYear === null ? `From universal year ${era.startYear}` : `Universal years ${era.startYear}–${era.endYear}`
+              era.lengthYears === null ? `From year 1 of ${esc(era.name)}` : `${esc(era.name)} years 1–${era.lengthYears}`
           } · <a href="/calendar/?year=${era.startYear}">Open in the calendar</a></p>`
         : "";
 
@@ -178,10 +207,15 @@ function articlePage(res, category, page) {
             <p class="lore-category">${langBadge(category.name, category.display_color, category.ink, categoryUrl(category.slug))}</p>
             ${eraSpan}
             ${dictionaryLinks}
-            <div class="lore-body">${
-                page.body ? renderLoreHtml(page.body) : '<p class="muted">This page has no content yet.</p>'
-            }</div>
+            ${
+                page.body
+                    ? `<div class="lore-body">${renderLoreHtml(page.body)}</div>`
+                    : isBook
+                      ? "" // a book's own text is optional
+                      : '<div class="lore-body"><p class="muted">This page has no content yet.</p></div>'
+            }
             ${era ? eraNotesHtml(era) : ""}
+            ${book ? bookNotesHtml(book) : ""}
         </article>
         ${aside}
     </div>

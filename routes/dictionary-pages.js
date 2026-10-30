@@ -5,6 +5,7 @@
 
 const dict = require("../lib/dictionary");
 const lore = require("../lib/lore");
+const eras = require("../lib/eras");
 const {
     HttpError,
     sendHtml,
@@ -804,6 +805,8 @@ module.exports = async function dictionaryPages(req, res, url) {
     if (!isDictionary) {
         return false;
     }
+
+    eras.syncIfChanged();
 
     if (req.method !== "GET" && req.method !== "HEAD") {
         throw new HttpError(405, "Method not allowed");

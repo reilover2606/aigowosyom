@@ -318,6 +318,31 @@
 		padding: 4px 10px;
 	}
 
+	.note-book-field {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 14px;
+	}
+
+	.note-book-field select {
+		flex: 1;
+		min-width: 0;
+		padding: 5px 8px;
+		font: inherit;
+		font-size: 14px;
+	}
+
+	.note-book-field small {
+		color: #777;
+	}
+
+	.note-book {
+		margin-top: 4px;
+		font-size: 0.85em;
+		color: #666;
+	}
+
 	.note-form {
 		display: flex;
 		flex-direction: column;
@@ -369,7 +394,12 @@
 
 <body>
 
-<p class="home-link"><a href="/">← Home</a></p>
+<nav class="sitebar sitebar-float" aria-label="Sections of the site">
+    <a class="sitebar-home" href="/">Aigowosyom</a>
+    <a href="/calendar/" aria-current="page">Calendar</a>
+    <a href="/lore">Lore</a>
+    <a href="/dictionary">Dictionary</a>
+</nav>
 
 <h1>Tanakōdeyam</h1>
 
@@ -396,6 +426,12 @@
     <form id="noteForm" class="note-form">
         <input type="text" id="noteTitleInput" placeholder="Title (optional)" maxlength="200">
         <textarea id="noteBodyInput" placeholder="Note" required></textarea>
+        <label class="note-book-field">
+            <span>Book <small>(optional)</small></span>
+            <select id="noteBookInput" aria-label="Assign this note to a book">
+                <option value="">— none —</option>
+            </select>
+        </label>
         <div class="note-form-buttons">
             <button type="submit" id="noteSubmit">Add note</button>
             <button type="button" id="noteCancelEdit" hidden>Cancel edit</button>
@@ -455,6 +491,11 @@ const WEEKDAYS = [
 ];
 
 let eras = [];
+
+// An era is shown as its name followed by its sinograph gloss, if it has one.
+function eraLabel(era) {
+    return era.sinographs ? `${era.name} ${era.sinographs}` : era.name;
+}
 
 // Last universal year that has an era. Later years have none.
 const ERA_HORIZON_YEAR = 2049;
@@ -517,7 +558,7 @@ function getErasForYear(year) {
 
         if (year >= startYear && year <= endYear) {
             result.push({
-                name: era.name,
+                name: eraLabel(era),
                 eraYear: year - startYear + 1
             });
         }
@@ -607,7 +648,7 @@ function displayEraTimeline(year) {
 
         const label = document.createElement("div");
         label.className = "era-segment-label conlang";
-        label.textContent = era.name;
+        label.textContent = eraLabel(era);
 
         segment.appendChild(label);
 
@@ -639,7 +680,7 @@ function displayEraTimeline(year) {
 		});
 
         segment.title =
-            `${era.name}: Universal Year ${era.startYear}` +
+            `${eraLabel(era)}: Universal Year ${era.startYear}` +
             (nextEra
                 ? `–${nextEra.startYear}`
                 : "–present");
@@ -1061,9 +1102,11 @@ const notesList = document.getElementById("notesList");
 const noteForm = document.getElementById("noteForm");
 const noteTitleInput = document.getElementById("noteTitleInput");
 const noteBodyInput = document.getElementById("noteBodyInput");
+const noteBookInput = document.getElementById("noteBookInput");
 const noteSubmit = document.getElementById("noteSubmit");
 const noteCancelEdit = document.getElementById("noteCancelEdit");
 
+let books = [];            // books a note can be assigned to (lore pages in "Books")
 let activeDay = null;      // civil day number open in the dialog
 let editingNoteId = null;  // note being edited, or null when adding
 let countsRequest = 0;     // guards against out-of-order responses
@@ -1141,6 +1184,7 @@ function resetNoteForm() {
     editingNoteId = null;
     noteTitleInput.value = "";
     noteBodyInput.value = "";
+    noteBookInput.value = "";
     noteSubmit.textContent = "Add note";
     noteCancelEdit.hidden = true;
 }
@@ -1172,6 +1216,19 @@ function renderNotes(notes) {
         body.textContent = note.body;
         div.appendChild(body);
 
+        // The book this note is assigned to, linking to its page in the lore.
+        if (note.book_id) {
+            const book = document.createElement("div");
+            book.className = "note-book";
+            book.append("📖 ");
+
+            const link = document.createElement("a");
+            link.href = `/lore/${encodeURIComponent(note.book_category_slug)}/${encodeURIComponent(note.book_slug)}`;
+            link.textContent = note.book_title;
+            book.appendChild(link);
+            div.appendChild(book);
+        }
+
         const actions = document.createElement("div");
         actions.className = "note-actions";
 
@@ -1182,6 +1239,7 @@ function renderNotes(notes) {
             editingNoteId = note.id;
             noteTitleInput.value = note.title || "";
             noteBodyInput.value = note.body;
+            noteBookInput.value = note.book_id ? String(note.book_id) : "";
             noteSubmit.textContent = "Save changes";
             noteCancelEdit.hidden = false;
             noteBodyInput.focus();
@@ -1236,9 +1294,33 @@ async function refreshNotes() {
     setBadge(day, notes.length);
 }
 
+// Fills the "Book" dropdown from the lore. Keeps the current choice if it
+// is still there (and the book of a note being edited, even if renamed).
+async function loadBooks() {
+    try {
+        books = await api("GET", "/api/lore/books");
+    } catch (error) {
+        console.error("Could not load books:", error);
+        books = [];
+    }
+
+    const chosen = noteBookInput.value;
+    noteBookInput.replaceChildren(new Option("— none —", ""));
+
+    for (const book of books) {
+        noteBookInput.append(new Option(book.title, String(book.id)));
+    }
+
+    noteBookInput.value = books.some((book) => String(book.id) === chosen) ? chosen : "";
+    noteBookInput.title = books.length
+        ? ""
+        : "No books yet. Create one in the Lore, in the Books category.";
+}
+
 async function openNotes(cell) {
     activeDay = Number(cell.dataset.day);
     resetNoteForm();
+    loadBooks();
 
     const year = document.getElementById("yearInput").value;
     const weekday = WEEKDAYS[weekdayIndex(activeDay)];
@@ -1264,7 +1346,8 @@ noteForm.addEventListener("submit", async (event) => {
 
     const data = {
         title: noteTitleInput.value,
-        body: noteBodyInput.value
+        body: noteBodyInput.value,
+        book_id: noteBookInput.value ? Number(noteBookInput.value) : null
     };
 
     try {

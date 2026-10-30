@@ -4,6 +4,7 @@
 
 const lore = require("../lib/lore");
 const eras = require("../lib/eras");
+const books = require("../lib/books");
 const { HttpError, sendJson, readJson, parseInteger } = require("../lib/http");
 const { stripLinkSyntax } = require("../lib/html");
 
@@ -29,6 +30,9 @@ function pageJson(id) {
     if (page) {
         page.is_era = page.era_start_year !== null;
         page.era = page.is_era ? eras.eraNotes(page.era_start_year) : null;
+        // Pages in the Books category are books: they carry their assigned notes.
+        page.is_book = page.category_system_key === books.CATEGORY_KEY;
+        page.book = page.is_book ? books.bookNotes(id) : null;
     }
 
     return page;
@@ -76,6 +80,12 @@ module.exports = async function loreApi(req, res, url) {
                 return true;
             }
         }
+    }
+
+    // ---- Books (for the calendar's "assign to a book" list) -----------
+    if (resource === "books" && parts.length === 1 && method === "GET") {
+        sendJson(res, 200, books.listBooks());
+        return true;
     }
 
     // ---- Pages --------------------------------------------------------

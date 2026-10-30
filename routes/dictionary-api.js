@@ -3,9 +3,23 @@
 // JSON API used by the dictionary editor.
 
 const dict = require("../lib/dictionary");
+const lore = require("../lib/lore");
+const eras = require("../lib/eras");
 const { HttpError, sendJson, readJson, parseInteger } = require("../lib/http");
 
 const PREFIX = "/api/dictionary/";
+
+// A word for the editor, with the lore pages that share its name (so the
+// editor can point at them).
+function wordJson(id) {
+    const word = dict.loadWord(id);
+
+    if (word) {
+        word.lore_pages = lore.findPagesByTitleKeys(dict.loreTitleKeys([word]));
+    }
+
+    return word;
+}
 
 function clampInt(value, fallback, min, max) {
     // A missing parameter is null, and Number(null) would be 0.
@@ -20,6 +34,8 @@ module.exports = async function dictionaryApi(req, res, url) {
     if (!url.pathname.startsWith(PREFIX)) {
         return false;
     }
+
+    eras.syncIfChanged();
 
     const parts = url.pathname.slice(PREFIX.length).split("/").filter(Boolean);
     const method = req.method;
@@ -85,7 +101,7 @@ module.exports = async function dictionaryApi(req, res, url) {
                 parseInteger(data && data.language_id, "language"),
                 data
             );
-            sendJson(res, 201, dict.loadWord(id));
+            sendJson(res, 201, wordJson(id));
             return true;
         }
 
@@ -93,7 +109,7 @@ module.exports = async function dictionaryApi(req, res, url) {
             const id = parseInteger(rawId, "id");
 
             if (method === "GET") {
-                const word = dict.loadWord(id);
+                const word = wordJson(id);
                 if (!word) {
                     throw new HttpError(404, "Word not found");
                 }
@@ -103,7 +119,7 @@ module.exports = async function dictionaryApi(req, res, url) {
 
             if (method === "PUT") {
                 dict.saveWord(id, null, await readJson(req));
-                sendJson(res, 200, dict.loadWord(id));
+                sendJson(res, 200, wordJson(id));
                 return true;
             }
 
