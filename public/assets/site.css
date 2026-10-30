@@ -35,3 +35,57 @@ h1 {
 .conlang {
     font-family: var(--font-sans);
 }
+
+/* ---- The slim bar along the top of every page ---- */
+
+.sitebar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 26px;
+    padding: 0 16px;
+    box-sizing: border-box;
+    background: #f1f2ee;
+    border-bottom: 1px solid #dfe1da;
+    color: #6f736b;
+    font-size: 12px;
+    line-height: 1;
+    text-align: left;
+}
+
+.sitebar a {
+    padding: 3px 1px;
+    color: #6f736b;
+    text-decoration: none;
+}
+
+.sitebar a:hover {
+    color: #222;
+    text-decoration: underline;
+}
+
+.sitebar a[aria-current="page"] {
+    color: #222;
+    font-weight: bold;
+}
+
+.sitebar .sitebar-home {
+    margin-right: auto;
+    letter-spacing: 0.02em;
+}
+
+/* On pages whose own layout has a top margin (the home page, the calendar),
+   the bar floats over that margin instead of pushing the page down. */
+.sitebar-float {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 5;
+}
+
+@media print {
+    .sitebar {
+        display: none;
+    }
+}

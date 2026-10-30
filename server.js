@@ -17,6 +17,7 @@ const handlers = [
     require("./routes/dictionary-pages"),
     require("./routes/lore-api"),
     require("./routes/lore-pages"),
+    require("./routes/site"),
     require("./lib/static")
 ];
 

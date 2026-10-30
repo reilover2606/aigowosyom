@@ -9,6 +9,18 @@ const { HttpError, sendJson, readJson, parseInteger } = require("../lib/http");
 
 const PREFIX = "/api/dictionary/";
 
+// A word for the editor, with the lore pages that share its name (so the
+// editor can point at them).
+function wordJson(id) {
+    const word = dict.loadWord(id);
+
+    if (word) {
+        word.lore_pages = lore.findPagesByTitleKeys(dict.loreTitleKeys([word]));
+    }
+
+    return word;
+}
+
 function clampInt(value, fallback, min, max) {
     // A missing parameter is null, and Number(null) would be 0.
     const n = value === null || value === "" ? NaN : Number(value);
@@ -89,7 +101,7 @@ module.exports = async function dictionaryApi(req, res, url) {
                 parseInteger(data && data.language_id, "language"),
                 data
             );
-            sendJson(res, 201, dict.loadWord(id));
+            sendJson(res, 201, wordJson(id));
             return true;
         }
 
@@ -97,19 +109,17 @@ module.exports = async function dictionaryApi(req, res, url) {
             const id = parseInteger(rawId, "id");
 
             if (method === "GET") {
-                const word = dict.loadWord(id);
+                const word = wordJson(id);
                 if (!word) {
                     throw new HttpError(404, "Word not found");
                 }
-                // Lore pages with the same title, so the editor can point at them.
-                word.lore_pages = lore.findPagesByTitleKeys(dict.loreTitleKeys([word]));
                 sendJson(res, 200, word);
                 return true;
             }
 
             if (method === "PUT") {
                 dict.saveWord(id, null, await readJson(req));
-                sendJson(res, 200, dict.loadWord(id));
+                sendJson(res, 200, wordJson(id));
                 return true;
             }
 

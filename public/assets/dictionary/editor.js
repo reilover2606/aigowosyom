@@ -840,7 +840,7 @@
             ),
 
             h("div", { class: "form-actions" },
-                draft.locked ? null : h("button", { type: "button", class: "primary", onclick: save }, "Save"),
+                h("button", { type: "button", class: "primary", onclick: save }, "Save"),
                 draft.id
                     ? h("a", {
                         href: `/dictionary/${encodeURIComponent(language.slug)}/${encodeURIComponent(draft.headword)}`,
@@ -853,31 +853,33 @@
             )
         );
 
-        // A built-in entry: show everything, but read-only, with a pointer to
-        // the lore page where its text can be edited.
+        // A built-in entry: show everything read-only, except the etymology
+        // notes (the only part that can be edited), with a pointer to the lore
+        // page where the rest of its text lives.
         if (draft.locked) {
             const title = formEl.querySelector(".form-title");
             const actions = formEl.querySelector(".form-actions");
-            const fieldset = h("fieldset", { class: "locked-fields", disabled: true });
 
             for (const node of [...formEl.children]) {
-                if (node !== title && node !== actions) {
-                    fieldset.append(node);
+                if (node === title || node === actions || node.querySelector("[name=etymology]")) {
+                    continue; // title, buttons and the etymology field stay live
                 }
+                const fieldset = h("fieldset", { class: "locked-fields", disabled: true });
+                node.replaceWith(fieldset);
+                fieldset.append(node);
             }
 
             const lorePage = draft.lorePages[0];
             title.after(
                 h("p", { class: "hint-block" },
-                    "🔒 Built in: this entry is generated from the calendar's eras and can't be edited or deleted here. ",
+                    "🔒 Built in: this entry is generated from the calendar's eras. Only the etymology notes can be edited here; ",
                     lorePage
-                        ? ["Edit its lore page instead: ",
+                        ? ["the rest comes from its lore page: ",
                             h("a", {
                                 href: `/lore/${encodeURIComponent(lorePage.category_slug)}/${encodeURIComponent(lorePage.slug)}`,
                                 target: "_blank"
                             }, `${lorePage.category_name} › ${lorePage.title} ↗`)]
-                        : "Its name and sinographs come from eras.json."),
-                fieldset
+                        : "the rest comes from eras.json.")
             );
         }
     }

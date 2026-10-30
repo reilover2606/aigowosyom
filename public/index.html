@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Aigowosyom</title>
 <link rel="stylesheet" href="/assets/site.css">
+<link rel="stylesheet" href="/assets/suggest.css">
 <style>
     body {
         margin: 60px auto;
@@ -50,9 +51,58 @@
         font-size: 0.9em;
         color: #666;
     }
+
+    /* Site-wide search, under the cards */
+    .site-search {
+        position: relative;
+        display: flex;
+        gap: 8px;
+        margin-top: 28px;
+    }
+
+    .site-search input {
+        flex: 1;
+        min-width: 0;
+        padding: 10px 14px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        font: inherit;
+        font-size: 16px;
+        background: white;
+    }
+
+    .site-search button {
+        padding: 10px 18px;
+        border: 1px solid #4a7c59;
+        border-radius: 6px;
+        background: #4a7c59;
+        color: white;
+        font: inherit;
+        font-size: 16px;
+        cursor: pointer;
+    }
+
+    .site-search button:hover {
+        background: #3d6a4a;
+    }
+
+    /* The suggestion dropdown spans the search box. */
+    .site-search .suggestions {
+        left: 0;
+        right: 0;
+        width: auto;
+        text-align: left;
+    }
 </style>
 </head>
 <body>
+
+<nav class="sitebar sitebar-float" aria-label="Sections of the site">
+    <a class="sitebar-home" href="/">Aigowosyom</a>
+    <a href="/calendar/">Calendar</a>
+    <a href="/lore">Lore</a>
+    <a href="/dictionary">Dictionary</a>
+</nav>
 
 <h1>Aigowosyom</h1>
 <p>Worldbuilding data</p>
@@ -72,5 +122,11 @@
     </a>
 </div>
 
+<form class="site-search" action="/search" method="get" role="search" data-suggest="site">
+    <input type="search" name="q" placeholder="Search the dictionary, the lore and calendar notes" aria-label="Search the whole site">
+    <button type="submit">Search</button>
+</form>
+
+<script src="/assets/dictionary/suggest.js"></script>
 </body>
 </html>

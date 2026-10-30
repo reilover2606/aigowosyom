@@ -3,7 +3,7 @@
 (() => {
     "use strict";
 
-    const form = document.querySelector(".topbar-search");
+    const form = document.querySelector("form[data-suggest]");
     const input = form && form.querySelector("input[name=q]");
 
     if (!input) {
@@ -28,13 +28,20 @@
     let links = []; // <a> elements in display order, including "see all"
     let active = -1;
 
-    // The same box serves the dictionary and the lore section.
-    const kind = form.dataset.suggest === "lore" ? "lore" : "dictionary";
-    const endpoint = kind === "lore" ? "/api/lore/search-pages" : "/api/dictionary/search-words";
-    const searchPath = kind === "lore" ? "/lore/search" : "/dictionary/search";
-    const noMatch = kind === "lore" ? "No matching pages" : "No matching entries";
+    // The same script serves the dictionary, lore and site-wide search boxes.
+    const kind = ["lore", "site"].includes(form.dataset.suggest) ? form.dataset.suggest : "dictionary";
+    const endpoint = {
+        lore: "/api/lore/search-pages",
+        site: "/api/search/suggest",
+        dictionary: "/api/dictionary/search-words"
+    }[kind];
+    const searchPath = { lore: "/lore/search", site: "/search", dictionary: "/dictionary/search" }[kind];
+    const noMatch = { lore: "No matching pages", site: "No matches", dictionary: "No matching entries" }[kind];
 
     function itemUrl(item) {
+        if (kind === "site") {
+            return item.url; // the server already built it
+        }
         return kind === "lore"
             ? `/lore/${encodeURIComponent(item.category_slug)}/${encodeURIComponent(item.slug)}`
             : `/dictionary/${encodeURIComponent(item.language_slug)}/${encodeURIComponent(item.headword)}`;
@@ -89,7 +96,17 @@
             const main = el("span", "sug-main");
             let tag;
 
-            if (kind === "lore") {
+            if (kind === "site") {
+                // Mixed results: dictionary words, lore pages and calendar notes.
+                main.append(el("span", item.conlang ? "sug-hw conlang" : "sug-hw", item.title));
+                if (item.extra) {
+                    main.append(el("span", "sug-sino conlang", item.extra));
+                }
+                tag = el("span", "lang-tag", item.badge.name);
+                tag.style.setProperty("--lang-bg", item.badge.color);
+                tag.style.setProperty("--lang-fg", item.badge.ink);
+                main.append(tag);
+            } else if (kind === "lore") {
                 main.append(el("span", "sug-hw", item.title));
                 tag = el("span", "lang-tag", item.category_name);
                 tag.style.setProperty("--lang-bg", item.category_color);
@@ -110,7 +127,7 @@
             }
 
             a.append(main);
-            const detail = kind === "lore" ? item.excerpt : item.gloss;
+            const detail = kind === "lore" ? item.excerpt : kind === "site" ? item.detail : item.gloss;
             if (detail) {
                 a.append(el("span", "sug-gloss", detail));
             }
