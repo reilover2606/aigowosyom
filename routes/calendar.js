@@ -24,14 +24,15 @@ const stmt = {
         "INSERT INTO notes (day, title, body, book_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
     ),
     update: db.prepare(
-        "UPDATE notes SET title = ?, body = ?, book_id = ?, updated_at = ? WHERE id = ?"
+        "UPDATE notes SET day = ?, title = ?, body = ?, book_id = ?, updated_at = ? WHERE id = ?"
     ),
     remove: db.prepare("DELETE FROM notes WHERE id = ?")
 };
 
-// Validates a note payload; returns { title, body, bookId }. `bookId` is
+// Validates a note payload; returns { day, title, body, bookId }. `bookId` is
 // null (no book), a book's id, or undefined when the payload doesn't mention
-// a book (so an update leaves the assignment alone).
+// a book (so an update leaves the assignment alone). `day` is likewise
+// undefined unless the payload names one (an update with a day moves the note).
 function parseNote(data) {
     if (!data || typeof data !== "object") {
         throw new HttpError(400, "Invalid note");
@@ -56,7 +57,9 @@ function parseNote(data) {
         }
     }
 
-    return { title: title || null, body, bookId };
+    const day = data.day === undefined ? undefined : parseInteger(data.day, "day");
+
+    return { day, title: title || null, body, bookId };
 }
 
 module.exports = async function calendarRoutes(req, res, url) {
@@ -90,7 +93,7 @@ module.exports = async function calendarRoutes(req, res, url) {
     if (parts.length === 2 && method === "POST") {
         const data = await readJson(req);
         const day = parseInteger(data && data.day, "day");
-        const { title, body, bookId } = parseNote(data);
+        const { title, body, bookId } = parseNote(data); // (day comes from above)
         const now = Date.now();
         const info = stmt.insert.run(day, title, body, bookId ?? null, now, now);
         sendJson(res, 201, stmt.get.get(info.lastInsertRowid));
@@ -100,16 +103,21 @@ module.exports = async function calendarRoutes(req, res, url) {
     if (parts.length === 3) {
         const id = parseInteger(parts[2], "id");
 
-        // PUT /api/notes/:id  { title?, body }
+        // PUT /api/notes/:id  { title?, body, day?, book_id? }  (day moves the note)
         if (method === "PUT") {
             const data = await readJson(req);
-            const { title, body, bookId } = parseNote(data);
+            const { day, title, body, bookId } = parseNote(data);
             const existing = stmt.get.get(id);
             if (!existing) {
                 throw new HttpError(404, "Note not found");
             }
             stmt.update.run(
-                title, body, bookId === undefined ? existing.book_id : bookId, Date.now(), id
+                day === undefined ? existing.day : day,
+                title,
+                body,
+                bookId === undefined ? existing.book_id : bookId,
+                Date.now(),
+                id
             );
             sendJson(res, 200, stmt.get.get(id));
             return true;
