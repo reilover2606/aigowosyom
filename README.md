@@ -6,6 +6,8 @@ Worldbuilding data suite. Everything runs locally from one Node server.
 | --- | --- |
 | `/` | Landing page |
 | `/calendar` | Tanakōdeyam calendar with per-day notes |
+| `/lore` | Lore encyclopedia: categories, pages, search |
+| `/lore/editor` | Lore editor (categories and pages, visual rich-text editor) |
 | `/dictionary` | Public dictionary: browse languages, entry pages, search |
 | `/dictionary/editor` | Dictionary editor (languages and words) |
 
@@ -48,11 +50,20 @@ Everything lives in one SQLite file, `data/worldbuilding.db` (created on first r
 - **Proto-languages** are ordinary languages flagged "reconstructed"; their headwords display with a leading `*`.
 - **Gender** (masculine/feminine/neuter) is only offered for languages flagged "has grammatical gender".
 
+## Lore notes
+
+- **Structure:** categories are the backbone; every page belongs to exactly one category. URLs are `/lore/<category-slug>/` and `/lore/<category-slug>/<page-slug>`. Pages are created and edited from a category's view in the editor, and can be moved to another category from the page form.
+- **Page slugs** are generated from the title (accents and punctuation removed, e.g. "The Fall of Kyōra" becomes `the-fall-of-kyora`, with `-2`, `-3`… added if taken) and can be edited. Renaming a page keeps its URL unless you change the slug. Category slugs reserve `editor`, `search`, `random` and `api`.
+- **Visual editor:** page bodies are written in a rich-text editor (headings 2–4, bold/italic/underline/strike, bulleted and numbered lists with nesting, quotes, links, horizontal rules, tables with row/column tools, undo/redo). Bodies are stored as sanitized HTML: the server keeps only an allowlist of tags and attributes and drops scripts, event handlers, `javascript:` links and the like, no matter what the editor sent. Pasted content is reduced to the same allowed formatting. Images are not supported yet.
+- **Links:** `[[category]]` links a category, `[[category|Page Title]]` a page (matched by title or slug), and `[[category|Page Title|display text]]` adds display text. Dictionary links work in lore text too (`[[tanako:moin]]`, `[[tanako:moin|display]]`), and lore links work in dictionary text. Where a dictionary-style `[[word|text]]` link starts with the slug of an existing lore category, it is read as a lore link. The editor's `[[ ]]` button searches pages, categories and dictionary words and inserts the link for you; selected text becomes the display text. Links to pages that don't exist yet are shown in red.
+- **Search:** a search box with live suggestions (titles and body text, diacritics ignored); an exact title goes straight to its page. `/lore/random` (optionally `?category=<slug>`) goes to a random page; random buttons are on the lore home, category pages and article pages.
+- **Category colors** work like language colors: a color picker in the category dialog (gray by default) tints badges, cards and the accent band on that category's pages.
+
 ## Layout
 
 ```
 server.js               entry point, request dispatch
-lib/                    db schema, dictionary data access, rendering, static files
-routes/                 calendar API, dictionary API, dictionary pages
+lib/                    db schema, dictionary and lore data access, HTML sanitizer, rendering, static files
+routes/                 calendar API, dictionary and lore APIs, dictionary and lore pages
 public/                 landing page, calendar app, dictionary editor assets
 ```

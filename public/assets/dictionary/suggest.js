@@ -28,8 +28,16 @@
     let links = []; // <a> elements in display order, including "see all"
     let active = -1;
 
-    function entryUrl(item) {
-        return `/dictionary/${encodeURIComponent(item.language_slug)}/${encodeURIComponent(item.headword)}`;
+    // The same box serves the dictionary and the lore section.
+    const kind = form.dataset.suggest === "lore" ? "lore" : "dictionary";
+    const endpoint = kind === "lore" ? "/api/lore/search-pages" : "/api/dictionary/search-words";
+    const searchPath = kind === "lore" ? "/lore/search" : "/dictionary/search";
+    const noMatch = kind === "lore" ? "No matching pages" : "No matching entries";
+
+    function itemUrl(item) {
+        return kind === "lore"
+            ? `/lore/${encodeURIComponent(item.category_slug)}/${encodeURIComponent(item.slug)}`
+            : `/dictionary/${encodeURIComponent(item.language_slug)}/${encodeURIComponent(item.headword)}`;
     }
 
     function close() {
@@ -74,26 +82,37 @@
             li.setAttribute("role", "presentation");
 
             const a = el("a");
-            a.href = entryUrl(item);
+            a.href = itemUrl(item);
             a.id = `sug-${links.length}`;
             a.setAttribute("role", "option");
 
             const main = el("span", "sug-main");
-            main.append(el("span", "sug-hw conlang", item.language_is_proto ? `*${item.headword}` : item.headword));
-            if (item.sinographs) {
-                main.append(el("span", "sug-sino conlang", item.sinographs));
-            }
-            const tag = el("span", "lang-tag", item.language_name);
-            tag.style.setProperty("--lang-bg", item.language_color);
-            tag.style.setProperty("--lang-fg", item.language_ink);
-            main.append(tag);
-            if (item.pos) {
-                main.append(el("span", "pos-tag", item.pos));
+            let tag;
+
+            if (kind === "lore") {
+                main.append(el("span", "sug-hw", item.title));
+                tag = el("span", "lang-tag", item.category_name);
+                tag.style.setProperty("--lang-bg", item.category_color);
+                tag.style.setProperty("--lang-fg", item.category_ink);
+                main.append(tag);
+            } else {
+                main.append(el("span", "sug-hw conlang", item.language_is_proto ? `*${item.headword}` : item.headword));
+                if (item.sinographs) {
+                    main.append(el("span", "sug-sino conlang", item.sinographs));
+                }
+                tag = el("span", "lang-tag", item.language_name);
+                tag.style.setProperty("--lang-bg", item.language_color);
+                tag.style.setProperty("--lang-fg", item.language_ink);
+                main.append(tag);
+                if (item.pos) {
+                    main.append(el("span", "pos-tag", item.pos));
+                }
             }
 
             a.append(main);
-            if (item.gloss) {
-                a.append(el("span", "sug-gloss", item.gloss));
+            const detail = kind === "lore" ? item.excerpt : item.gloss;
+            if (detail) {
+                a.append(el("span", "sug-gloss", detail));
             }
 
             li.append(a);
@@ -102,13 +121,13 @@
         }
 
         if (items.length === 0) {
-            list.append(el("li", "sug-empty", "No matching entries"));
+            list.append(el("li", "sug-empty", noMatch));
         }
 
         const all = el("li", "sug-all");
         all.setAttribute("role", "presentation");
         const allLink = el("a", "", `Search all results for “${query}”`);
-        allLink.href = `/dictionary/search?q=${encodeURIComponent(query)}&go=0`;
+        allLink.href = `${searchPath}?q=${encodeURIComponent(query)}&go=0`;
         allLink.id = `sug-${links.length}`;
         allLink.setAttribute("role", "option");
         all.append(allLink);
@@ -136,7 +155,7 @@
 
         try {
             const response = await fetch(
-                `/api/dictionary/search-words?q=${encodeURIComponent(query)}`,
+                `${endpoint}?q=${encodeURIComponent(query)}`,
                 { signal: controller.signal }
             );
             if (!response.ok) {
