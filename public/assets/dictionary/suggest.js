@@ -83,7 +83,10 @@
             if (item.sinographs) {
                 main.append(el("span", "sug-sino", item.sinographs));
             }
-            main.append(el("span", "lang-tag", item.language_name));
+            const tag = el("span", "lang-tag", item.language_name);
+            tag.style.setProperty("--lang-bg", item.language_color);
+            tag.style.setProperty("--lang-fg", item.language_ink);
+            main.append(tag);
             if (item.pos) {
                 main.append(el("span", "pos-tag", item.pos));
             }

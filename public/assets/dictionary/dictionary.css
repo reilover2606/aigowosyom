@@ -187,9 +187,26 @@ a.missing {
     color: var(--muted);
 }
 
+/* Language badge: colored per language via --lang-bg / --lang-fg
+   (inline), gray when a language has no color. */
 .lang-tag {
-    background: #e3efe6;
-    color: #2f5a3b;
+    background: var(--lang-bg, #6e7681);
+    color: var(--lang-fg, #fff);
+    text-decoration: none;
+}
+
+a.lang-tag:hover {
+    filter: brightness(0.9);
+}
+
+.topbar a.lang-tag,
+.entry a.lang-tag,
+.content a.lang-tag {
+    color: var(--lang-fg, #fff);
+}
+
+.also-link {
+    text-decoration: none;
 }
 
 .pos-tag {
@@ -210,6 +227,7 @@ a.missing {
     flex-direction: column;
     padding: 14px;
     border: 1px solid var(--border);
+    border-left: 8px solid var(--lang-color, #6e7681);
     border-radius: 6px;
     text-decoration: none;
     color: inherit;
@@ -619,7 +637,7 @@ button.danger {
     display: block;
     height: 100%;
     border-radius: 5px;
-    background: var(--series-1);
+    background: var(--bar, var(--series-1));
 }
 
 .bar-value {
@@ -694,4 +712,187 @@ button.danger {
     padding: 8px 12px;
     color: var(--muted);
     font-size: 0.9em;
+}
+
+/* ---- Language color accents ---- */
+
+/* A language page or entry carries --lang-color; the accent is a
+   colored band across the top of the page and a chip beside headings. */
+.language-page,
+.entry-page {
+    border-top: 6px solid var(--lang-color);
+}
+
+.language-page h1,
+.entry-page h1 {
+    padding-left: 12px;
+    border-left: 8px solid var(--lang-color);
+}
+
+.language-heading {
+    display: inline-block;
+    padding: 2px 12px;
+    border: none;
+    border-radius: 4px;
+    background: var(--lang-color);
+    color: var(--lang-ink, #fff);
+    font-size: 1.15em;
+}
+
+.entry-page .language-heading-rule {
+    border-bottom: 1px solid var(--lang-color);
+    margin-bottom: 10px;
+}
+
+.language-page .tabs a.active {
+    border-top: 3px solid var(--lang-color);
+}
+
+.language-page .letters a.active {
+    background: var(--lang-color);
+    border-color: var(--lang-color);
+    color: var(--lang-ink, #fff);
+}
+
+.language-page .letters a:hover {
+    border-color: var(--lang-color);
+}
+
+.language-page .stat-tile {
+    border-top: 3px solid var(--lang-color);
+}
+
+/* ---- Language family graph ---- */
+
+.content.wide {
+    max-width: 1200px;
+}
+
+.button-link.secondary {
+    background: transparent;
+    color: var(--accent);
+    margin-left: 6px;
+}
+
+.button-link.secondary:hover {
+    background: #e3efe6;
+}
+
+.tabs .tab-aside {
+    margin-left: auto;
+    font-size: 0.9em;
+}
+
+.family-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 22px;
+    margin: 6px 0 12px;
+    font-size: 0.9em;
+}
+
+.family-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.family-scroll {
+    overflow-x: auto;
+    padding: 6px 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fcfcfb;
+}
+
+.family-graph {
+    display: block;
+    margin: 0 auto;
+    max-width: none;
+}
+
+.family-graph .edge-line {
+    fill: none;
+    stroke: #52514e;
+    stroke-linecap: round;
+    opacity: 0.8;
+}
+
+.family-graph .edge-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 16;
+}
+
+.family-graph .family-edge:hover .edge-line {
+    stroke: #1d4ed8;
+    opacity: 1;
+}
+
+.family-graph .family-node rect {
+    stroke: #00000030;
+    stroke-width: 1;
+}
+
+.family-graph .family-node:hover rect {
+    stroke: #000;
+    stroke-width: 2;
+}
+
+.family-graph .node-name {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.family-graph .node-sub {
+    font-size: 11px;
+    opacity: 0.9;
+}
+
+.family-graph .edge-label {
+    pointer-events: none;
+}
+
+.family-graph .edge-label rect {
+    fill: #fff;
+    stroke: #c8ccd1;
+}
+
+.family-graph .edge-label text {
+    font-size: 11px;
+    fill: #202122;
+    font-variant-numeric: tabular-nums;
+}
+
+.family-graph .family-caption {
+    font-size: 12px;
+    fill: var(--muted);
+}
+
+.family-table-title {
+    margin: 22px 0 6px;
+    font-size: 1.1em;
+}
+
+.relations {
+    border-collapse: collapse;
+    width: 100%;
+    max-width: 700px;
+    font-size: 0.9em;
+}
+
+.relations th,
+.relations td {
+    padding: 5px 10px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.relations .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.relations .lang-tag {
+    font-size: 0.85em;
 }

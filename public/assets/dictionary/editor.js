@@ -89,6 +89,26 @@
         return new Date(timestamp).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
     }
 
+    const DEFAULT_COLOR = "#6e7681";
+
+    // White or near-black, whichever reads better on the background.
+    function inkFor(hex) {
+        const channel = (offset) => {
+            const c = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+            return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+        };
+        const L = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+        const dark = (0.0056 + 0.05);
+        return 1.05 / (L + 0.05) >= (L + 0.05) / dark ? "#ffffff" : "#111111";
+    }
+
+    function langBadge(name, color, ink) {
+        return h("span", {
+            class: "lang-tag",
+            style: `--lang-bg:${color || DEFAULT_COLOR};--lang-fg:${ink || "#ffffff"}`
+        }, name);
+    }
+
     function markDirty() {
         state.dirty = true;
     }
@@ -144,7 +164,7 @@
     // Word picker (autocomplete over existing entries)
     // ------------------------------------------------------
 
-    function createPicker({ languageId, placeholder, onSelect }) {
+    function createPicker({ languageId, placeholder, onSelect, extraParams = {} }) {
         const input = h("input", { type: "text", placeholder, autocomplete: "off" });
         const results = h("ul", { class: "picker-results", hidden: true });
         let timer = null;
@@ -170,9 +190,7 @@
             }
 
             items.forEach((item, i) => {
-                const detail = [item.language_name, item.pos, item.gloss]
-                    .filter(Boolean)
-                    .join(" · ");
+                const detail = [item.pos, item.gloss].filter(Boolean).join(" · ");
 
                 results.append(
                     h("li", {
@@ -184,7 +202,9 @@
                         }
                     },
                     h("strong", {}, shown(item.headword, { is_proto: item.language_is_proto })),
-                    h("span", { class: "sub" }, detail))
+                    h("span", { class: "sub" },
+                        langBadge(item.language_name, item.language_color, item.language_ink),
+                        ` ${detail}`))
                 );
             });
 
@@ -200,7 +220,7 @@
                 return;
             }
 
-            const params = new URLSearchParams({ q });
+            const params = new URLSearchParams({ q, ...extraParams });
             if (languageId) {
                 params.set("language", languageId);
             }
@@ -294,10 +314,9 @@
         onclick: () => openLanguageDialog(null)
     }, "New language");
 
-    const formEl = h("div", { class: "panel" });
+    const formEl = h("div", { class: "panel form-panel" });
 
-    root.replaceChildren(
-        h("aside", { class: "panel sidebar" },
+    const sidebarEl = h("aside", { class: "panel sidebar" },
             languageSelect,
             h("div", { class: "row" }, editLanguageButton, newLanguageButton),
             filterInput,
@@ -305,9 +324,9 @@
             newWordButton,
             listEl,
             listFooter
-        ),
-        formEl
-    );
+        );
+
+    root.replaceChildren(sidebarEl, formEl);
 
     // ------------------------------------------------------
     // Sidebar
@@ -316,10 +335,18 @@
     function renderLanguageSelect() {
         languageSelect.replaceChildren(
             ...state.languages.map((language) =>
-                h("option", { value: language.id, selected: language.id === state.languageId },
-                    `${language.name}${language.is_proto ? " (reconstructed)" : ""} — ${language.word_count}`)
+                h("option", {
+                    value: language.id,
+                    selected: language.id === state.languageId,
+                    style: `color:${language.display_color}`
+                },
+                `■ ${language.name}${language.is_proto ? " (reconstructed)" : ""} — ${language.word_count}`)
             )
         );
+
+        const accent = currentLanguage() ? currentLanguage().display_color : DEFAULT_COLOR;
+        sidebarEl.style.setProperty("--lang-color", accent);
+        formEl.style.setProperty("--lang-color", accent);
         languageSelect.value = state.languageId ?? "";
         languageSelect.disabled = state.languages.length === 0;
         editLanguageButton.disabled = !currentLanguage();
@@ -424,6 +451,7 @@
             etymology: "",
             senses: [""],
             variantOf: [],
+            variantForms: [],
             ancestors: []
         };
     }
@@ -444,12 +472,17 @@
                 label: shown(v.headword, { is_proto: v.language_is_proto }),
                 language: v.language_name
             })),
+            // Words that are variants of this one: this word is a base word
+            // and so can't itself become a variant.
+            variantForms: word.variantForms.map((v) => v.headword),
             ancestors: word.ancestors.map((a) => ({
                 id: a.id,
                 kind: a.kind,
                 note: a.note || "",
                 label: shown(a.headword, { is_proto: a.language_is_proto }),
-                language: a.language_name
+                language: a.language_name,
+                color: a.language_color,
+                ink: a.language_ink
             }))
         };
     }
@@ -606,7 +639,12 @@
                                 ? h("div", { class: "picked" }, variant.label)
                                 : createPicker({
                                     languageId: language.id,
-                                    placeholder: `Find a word in ${language.name}…`,
+                                    placeholder: `Find a base word in ${language.name}…`,
+                                    // Only base words (not variants themselves) can be parents.
+                                    extraParams: {
+                                        variantParents: "1",
+                                        ...(draft.id ? { exclude: draft.id } : {})
+                                    },
                                     onSelect: (item) => {
                                         if (item.id === draft.id) {
                                             setStatus("A word cannot be a variant of itself.", "error");
@@ -644,7 +682,7 @@
                         h("div", { class: "grow" },
                             ancestor.id
                                 ? h("div", { class: "picked" },
-                                    ancestor.label, " ", h("span", { class: "lang" }, `(${ancestor.language})`))
+                                    ancestor.label, " ", langBadge(ancestor.language, ancestor.color, ancestor.ink))
                                 : createPicker({
                                     languageId: null,
                                     placeholder: "Find a word in any language…",
@@ -656,7 +694,9 @@
                                         Object.assign(ancestor, {
                                             id: item.id,
                                             label: shown(item.headword, { is_proto: item.language_is_proto }),
-                                            language: item.language_name
+                                            language: item.language_name,
+                                            color: item.language_color,
+                                            ink: item.language_ink
                                         });
                                         markDirty();
                                         renderAncestors();
@@ -714,7 +754,9 @@
 
         formEl.replaceChildren(
             h("h2", { class: "form-title" },
-                draft.id ? `Edit: ${shown(draft.headword, language)}` : `New word in ${language.name}`),
+                draft.id ? `Edit: ${shown(draft.headword, language)}` : "New word",
+                " ",
+                langBadge(language.name, language.display_color, language.ink)),
 
             h("div", { class: "field-grid" },
                 textField("Headword", "headword"),
@@ -763,17 +805,23 @@
 
             h("div", { class: "field" },
                 h("span", { class: "label" }, "Variant of",
-                    h("span", { class: "hint" }, ` — dialectal or spelling variant of a word in ${language.name}`)),
+                    h("span", { class: "hint" },
+                        ` — dialectal or spelling variant of a base word in ${language.name}. ` +
+                        "Only base words can have variants; a variant can't be given variants.")),
                 variantsEl,
-                h("div", {}, h("button", {
-                    type: "button",
-                    onclick: () => {
-                        draft.variantOf.push({ id: null, kind: "dialectal", label: "", language: "" });
-                        renderVariants();
-                        const pickers = variantsEl.querySelectorAll(".picker input");
-                        pickers[pickers.length - 1].focus();
-                    }
-                }, "Add variant"))
+                draft.variantForms.length && draft.variantOf.length === 0
+                    ? h("p", { class: "hint-block" },
+                        `This word is the base word of ${draft.variantForms.join(", ")}, ` +
+                        "so it can't itself be a variant of another word.")
+                    : h("div", {}, h("button", {
+                        type: "button",
+                        onclick: () => {
+                            draft.variantOf.push({ id: null, kind: "dialectal", label: "", language: "" });
+                            renderVariants();
+                            const pickers = variantsEl.querySelectorAll(".picker input");
+                            pickers[pickers.length - 1].focus();
+                        }
+                    }, "Add variant"))
             ),
 
             h("div", { class: "field" },
@@ -872,6 +920,37 @@
         const protoInput = h("input", { type: "checkbox", checked: language ? Boolean(language.is_proto) : false });
         const genderInput = h("input", { type: "checkbox", checked: language ? Boolean(language.has_gender) : false });
         const notesInput = h("textarea", { value: language && language.notes ? language.notes : "" });
+
+        // null = no color assigned (shown as the default gray).
+        let colorValue = language && language.color ? language.color : null;
+        const preview = h("span", { class: "lang-tag" });
+        const colorInput = h("input", {
+            type: "color",
+            value: colorValue || DEFAULT_COLOR,
+            "aria-label": "Language color",
+            oninput: () => {
+                colorValue = colorInput.value;
+                refreshColor();
+            }
+        });
+        const clearColor = h("button", {
+            type: "button",
+            onclick: () => {
+                colorValue = null;
+                colorInput.value = DEFAULT_COLOR;
+                refreshColor();
+            }
+        }, "Use default gray");
+        const colorNote = h("span", { class: "hint" });
+
+        function refreshColor() {
+            const shownColor = colorValue || DEFAULT_COLOR;
+            preview.textContent = nameInput.value.trim() || "Badge preview";
+            preview.style.setProperty("--lang-bg", shownColor);
+            preview.style.setProperty("--lang-fg", inkFor(shownColor));
+            colorNote.textContent = colorValue ? colorValue : "default (gray)";
+            clearColor.disabled = colorValue === null;
+        }
         const errorEl = h("div", { class: "status error" });
 
         const dialog = h("dialog", {},
@@ -882,6 +961,9 @@
                 slugInput),
             h("div", { class: "field check" }, protoInput, h("label", {}, "Reconstructed / proto-language")),
             h("div", { class: "field check" }, genderInput, h("label", {}, "Has grammatical gender")),
+            h("div", { class: "field" },
+                h("label", {}, "Color", h("span", { class: "hint" }, " — used for this language's badges and pages")),
+                h("div", { class: "row" }, colorInput, clearColor, colorNote, h("span", { class: "grow" }), preview)),
             h("div", { class: "field" }, h("label", {}, "Notes"), notesInput),
             errorEl,
             h("div", { class: "form-actions" },
@@ -893,7 +975,8 @@
                             slug: slugInput.value,
                             is_proto: protoInput.checked,
                             has_gender: genderInput.checked,
-                            notes: notesInput.value
+                            notes: notesInput.value,
+                            color: colorValue
                         };
 
                         try {
@@ -938,6 +1021,9 @@
                     : null
             )
         );
+
+        nameInput.addEventListener("input", refreshColor);
+        refreshColor();
 
         dialog.addEventListener("close", () => dialog.remove());
         document.body.append(dialog);

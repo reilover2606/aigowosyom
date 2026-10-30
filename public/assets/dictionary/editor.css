@@ -309,3 +309,48 @@ dialog h2 {
 .list-row > .grow:first-child {
     flex: 2 1 180px;
 }
+
+/* ---- Language color accents ---- */
+
+.sidebar,
+.form-panel {
+    border-top: 6px solid var(--lang-color, #6e7681);
+}
+
+.form-title .lang-tag {
+    font-size: 0.6em;
+    vertical-align: middle;
+}
+
+.list-row .picked .lang-tag,
+.picker-results .lang-tag {
+    font-size: 0.75em;
+    vertical-align: baseline;
+}
+
+.hint-block {
+    margin: 4px 0;
+    padding: 8px 10px;
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    color: var(--muted);
+    font-size: 0.9em;
+}
+
+.row .hint {
+    font-size: 0.8em;
+    color: var(--muted);
+}
+
+.field input[type="color"],
+.row input[type="color"] {
+    width: 56px;
+    height: 34px;
+    padding: 2px;
+    flex: none;
+    cursor: pointer;
+}
+
+.row button {
+    white-space: nowrap;
+}
