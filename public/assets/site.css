@@ -1,0 +1,37 @@
+/* Site-wide typography.
+ *
+ *  - Words of the constructed languages are ALWAYS sans-serif: mark them
+ *    with class="conlang" (headwords, sinographs, pronunciations, month and
+ *    era names, letters of a language's alphabet, links to entries).
+ *  - Everything else is serif.
+ *  - Level-1 headings are exempt from the serif rule and use the sans
+ *    stack (an h1 that is itself a language word is sans either way).
+ */
+
+:root {
+    --font-serif: Georgia, "Times New Roman", "Noto Serif", "Source Serif Pro",
+        "Noto Serif CJK JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+    --font-sans: "Segoe UI", "Helvetica Neue", Arial, "Noto Sans",
+        "Noto Sans CJK JP", "Hiragino Sans", "Yu Gothic", "Microsoft YaHei",
+        "DejaVu Sans", "Lucida Sans Unicode", sans-serif;
+}
+
+body {
+    font-family: var(--font-serif);
+}
+
+/* Form controls don't inherit fonts by default. */
+input,
+select,
+textarea,
+button {
+    font-family: inherit;
+}
+
+h1 {
+    font-family: var(--font-sans);
+}
+
+.conlang {
+    font-family: var(--font-sans);
+}

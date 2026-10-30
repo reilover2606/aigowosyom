@@ -79,9 +79,9 @@
             a.setAttribute("role", "option");
 
             const main = el("span", "sug-main");
-            main.append(el("span", "sug-hw", item.language_is_proto ? `*${item.headword}` : item.headword));
+            main.append(el("span", "sug-hw conlang", item.language_is_proto ? `*${item.headword}` : item.headword));
             if (item.sinographs) {
-                main.append(el("span", "sug-sino", item.sinographs));
+                main.append(el("span", "sug-sino conlang", item.sinographs));
             }
             const tag = el("span", "lang-tag", item.language_name);
             tag.style.setProperty("--lang-bg", item.language_color);

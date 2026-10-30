@@ -7,7 +7,7 @@
         "noun", "verb", "adjective", "adverb", "pronoun", "numeral",
         "particle", "preposition", "postposition", "conjunction",
         "interjection", "determiner", "affix", "prefix", "suffix",
-        "phrase", "proper noun", "classifier"
+        "phrase", "proper noun", "personal name", "family name", "toponym", "classifier"
     ];
 
     const LINK_HINT = "Link to other entries with [[word]] (same language), " +
@@ -201,7 +201,7 @@
                             choose(item);
                         }
                     },
-                    h("strong", {}, shown(item.headword, { is_proto: item.language_is_proto })),
+                    h("strong", { class: "conlang" }, shown(item.headword, { is_proto: item.language_is_proto })),
                     h("span", { class: "sub" },
                         langBadge(item.language_name, item.language_color, item.language_ink),
                         ` ${detail}`))
@@ -363,7 +363,7 @@
                     class: item.id === (state.draft && state.draft.id) ? "selected" : "",
                     onclick: () => openWord(item.id)
                 },
-                h("span", { class: "hw" }, shown(item.headword, language)),
+                h("span", { class: "hw conlang" }, shown(item.headword, language)),
                 h("span", { class: "sub" }, [item.pos, item.gloss].filter(Boolean).join(" · ")),
                 state.sort === "updated"
                     ? h("span", { class: "sub when" }, `updated ${formatWhen(item.updated_at)}`)
@@ -528,9 +528,11 @@
     }
 
     // A labelled text field bound to a draft property.
-    function textField(label, name, { hint, tag = "input", list, placeholder } = {}) {
+    // `conlang` marks fields that hold words of the language (sans-serif).
+    function textField(label, name, { hint, tag = "input", list, placeholder, conlang = false } = {}) {
         const control = h(tag, {
             name,
+            class: conlang ? "conlang" : undefined,
             value: state.draft[name],
             list,
             placeholder,
@@ -636,7 +638,7 @@
                     h("div", { class: "list-row" },
                         h("div", { class: "grow" },
                             variant.id
-                                ? h("div", { class: "picked" }, variant.label)
+                                ? h("div", { class: "picked conlang" }, variant.label)
                                 : createPicker({
                                     languageId: language.id,
                                     placeholder: `Find a base word in ${language.name}…`,
@@ -682,7 +684,8 @@
                         h("div", { class: "grow" },
                             ancestor.id
                                 ? h("div", { class: "picked" },
-                                    ancestor.label, " ", langBadge(ancestor.language, ancestor.color, ancestor.ink))
+                                    h("span", { class: "conlang" }, ancestor.label), " ",
+                                    langBadge(ancestor.language, ancestor.color, ancestor.ink))
                                 : createPicker({
                                     languageId: null,
                                     placeholder: "Find a word in any language…",
@@ -754,20 +757,22 @@
 
         formEl.replaceChildren(
             h("h2", { class: "form-title" },
-                draft.id ? `Edit: ${shown(draft.headword, language)}` : "New word",
+                draft.id
+                    ? ["Edit: ", h("span", { class: "conlang" }, shown(draft.headword, language))]
+                    : "New word",
                 " ",
                 langBadge(language.name, language.display_color, language.ink)),
 
             h("div", { class: "field-grid" },
-                textField("Headword", "headword"),
+                textField("Headword", "headword", { conlang: true }),
                 textField("Part of speech", "pos", { list: "pos-suggestions" }),
                 genderField
             ),
             posList,
 
             h("div", { class: "field-grid" },
-                textField("Pronunciation", "pronunciation", { hint: "optional" }),
-                textField("Sinographs", "sinographs", { hint: "optional" })
+                textField("Pronunciation", "pronunciation", { hint: "optional", conlang: true }),
+                textField("Sinographs", "sinographs", { hint: "optional", conlang: true })
             ),
 
             h("div", { class: "field" },
