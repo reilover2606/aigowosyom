@@ -15,11 +15,15 @@ const {
     entryUrl,
     languageUrl,
     displayHeadword,
+    langVars,
+    langBadge,
     layout,
     renderText
 } = require("../lib/render");
 const { languageStats } = require("../lib/stats");
+const { resolveColor } = require("../lib/color");
 const charts = require("../lib/charts");
+const { familyView, KIND_STYLE } = require("../lib/family");
 
 const PAGE_SIZE = 200;
 const SEARCH_LIMIT = 100;
@@ -51,7 +55,7 @@ function glossSnippet(gloss) {
 // A link to a related word, preceded by its language name.
 function relatedWordLink(rel) {
     return (
-        `<a href="${languageUrl(rel.language_slug)}">${esc(rel.language_name)}</a> ` +
+        `${langBadge(rel.language_name, rel.language_color, rel.language_ink, languageUrl(rel.language_slug))} ` +
         `<a href="${entryUrl(rel.language_slug, rel.headword)}" lang="${esc(rel.language_slug)}">` +
         `${esc(displayHeadword(rel.headword, rel.language_is_proto))}</a>`
     );
@@ -68,7 +72,7 @@ function homePage(res) {
         ? languages
               .map(
                   (lang) => `
-        <a class="language-card" href="${languageUrl(lang.slug)}">
+        <a class="language-card" href="${languageUrl(lang.slug)}" style="${langVars(lang.display_color, lang.ink)}">
             <span class="language-card-name">${esc(lang.name)}</span>
             <span class="language-card-meta">${lang.word_count} ${
                 lang.word_count === 1 ? "entry" : "entries"
@@ -89,7 +93,7 @@ function homePage(res) {
     <p class="muted">Search above, or choose a language to browse.</p>
     ${
         languages.some((lang) => lang.word_count > 0)
-            ? '<p><a class="button-link" href="/dictionary/random">🎲 Random word</a></p>'
+            ? '<p><a class="button-link" href="/dictionary/random">🎲 Random word</a> <a class="button-link secondary" href="/dictionary/family">Language family tree</a></p>'
             : ""
     }
     <div class="language-grid">${cards}</div>
@@ -177,7 +181,7 @@ function languageShell(language, activeTab, content) {
     return layout({
         title: `${language.name}${activeTab === "stats" ? " statistics" : ""} – Dictionary`,
         search: { q: "" },
-        body: `<main class="content">
+        body: `<main class="content language-page" style="${langVars(language.display_color, language.ink)}">
     <p class="crumbs"><a href="/dictionary">Dictionary</a> › ${esc(language.name)}</p>
     <h1>${esc(language.name)}${
         language.is_proto ? ' <span class="badge">reconstructed</span>' : ""
@@ -186,6 +190,7 @@ function languageShell(language, activeTab, content) {
     <nav class="tabs" aria-label="Language views">
         <a href="${base}"${activeTab === "words" ? ' class="active" aria-current="page"' : ""}>Words</a>
         <a href="${base}?view=stats"${activeTab === "stats" ? ' class="active" aria-current="page"' : ""}>Statistics</a>
+        <a class="tab-aside" href="/dictionary/family">Family tree</a>
     </nav>
     ${content}
 </main>`
@@ -304,7 +309,8 @@ function statsPage(res, language) {
                 stats.sources.map((item) => ({
                     label: item.name,
                     count: item.n,
-                    href: languageUrl(item.slug)
+                    href: languageUrl(item.slug),
+                    color: resolveColor(item.color).color
                 }))
             ),
             "Entries here with an ancestral form in each language."
@@ -315,7 +321,8 @@ function statsPage(res, language) {
                 stats.influence.map((item) => ({
                     label: item.name,
                     count: item.n,
-                    href: languageUrl(item.slug)
+                    href: languageUrl(item.slug),
+                    color: resolveColor(item.color).color
                 }))
             ),
             "Entries in other languages descended from entries here."
@@ -446,7 +453,7 @@ function entryPage(res, language, headword) {
             layout({
                 title: `${headword} – ${language.name} – Dictionary`,
                 search: { q: headword },
-                body: `<main class="content">
+                body: `<main class="content" style="${langVars(language.display_color, language.ink)}">
     <p class="crumbs"><a href="/dictionary">Dictionary</a> › <a href="${languageUrl(language.slug)}">${esc(language.name)}</a></p>
     <h1>${esc(headword)}</h1>
     <p>There is no entry for “${esc(headword)}” in ${esc(language.name)}.</p>
@@ -475,7 +482,7 @@ function entryPage(res, language, headword) {
         layout({
             title: `${displayHeadword(headword, language.is_proto)} – ${language.name} – Dictionary`,
             search: { q: "" },
-            body: `<main class="content entry-page">
+            body: `<main class="content entry-page" style="${langVars(language.display_color, language.ink)}">
     <p class="crumbs"><a href="/dictionary">Dictionary</a> › <a href="${languageUrl(language.slug)}">${esc(language.name)}</a></p>
     <h1 lang="${esc(language.slug)}">${esc(displayHeadword(headword, language.is_proto))}</h1>
     ${
@@ -483,12 +490,12 @@ function entryPage(res, language, headword) {
             ? `<p class="also">Also in: ${others
                   .map(
                       (o) =>
-                          `<a href="${entryUrl(o.language_slug, headword)}">${esc(o.language_name)}</a>`
+                          `<a class="also-link" href="${entryUrl(o.language_slug, headword)}">${langBadge(o.language_name, o.language_color, o.language_ink)}</a>`
                   )
                   .join(" · ")}</p>`
             : ""
     }
-    <h2 class="language-heading">${esc(language.name)}</h2>
+    <div class="language-heading-rule"><h2 class="language-heading">${esc(language.name)}</h2></div>
     ${words.map((word, i) => renderEntry(word, language, i, multiple)).join("\n")}
 </main>`
         })
@@ -521,7 +528,7 @@ function searchPage(req, res, url) {
                 displayHeadword(r.headword, r.language_is_proto)
             )}</a>
             ${r.sinographs ? `<span class="sinographs">${esc(r.sinographs)}</span>` : ""}
-            <span class="lang-tag">${esc(r.language_name)}</span>
+            ${langBadge(r.language_name, r.language_color, r.language_ink)}
             ${r.pos ? `<span class="pos-tag">${esc(r.pos)}</span>` : ""}
             <span class="gloss">${esc(glossSnippet(r.gloss))}</span>
         </li>`
@@ -561,6 +568,64 @@ function searchPage(req, res, url) {
     <ul class="word-list">${rows}</ul>`
               : `<p>No results for “${esc(q)}”.</p>`
     }
+</main>`
+        })
+    );
+}
+
+function familyPage(res) {
+    const view = familyView();
+
+    const legendLine = (kind) => {
+        const { dash } = KIND_STYLE[kind];
+        return `<span class="family-key"><svg width="44" height="10" aria-hidden="true"><line x1="2" y1="5" x2="42" y2="5" stroke="#52514e" stroke-width="2.5" stroke-linecap="round"${
+            dash ? ` stroke-dasharray="${dash}"` : ""
+        }/></svg> ${kind}</span>`;
+    };
+
+    const rows = view.relations
+        .map(
+            (r) => `<tr>
+            <td>${langBadge(r.from.name, resolveColor(r.from.color).color, resolveColor(r.from.color).ink, languageUrl(r.from.slug))}</td>
+            <td>${langBadge(r.to.name, resolveColor(r.to.color).color, resolveColor(r.to.color).ink, languageUrl(r.to.slug))}</td>
+            <td>${esc(r.kind)}</td>
+            <td class="num">${r.n}</td>
+        </tr>`
+        )
+        .join("");
+
+    const body = view.empty
+        ? '<p class="muted">No languages yet. Add one in the <a href="/dictionary/editor">editor</a>.</p>'
+        : `<p class="muted">Languages are linked through the ancestral forms recorded on their words.
+        Ancestors sit above descendants. Each number is how many words are linked, and line thickness grows with it.
+        Click a language to open it.</p>
+    <p class="family-legend">${legendLine("inherited")} ${legendLine("borrowed")} ${legendLine("areal")}</p>
+    ${
+        view.hasLinks
+            ? ""
+            : '<p class="muted">No cross-language links yet. Add ancestor forms to words in the <a href="/dictionary/editor">editor</a> and the graph will fill in.</p>'
+    }
+    <div class="family-scroll">${view.svg}</div>
+    ${
+        view.relations.length
+            ? `<h2 class="family-table-title">Relationships</h2>
+    <table class="relations">
+        <thead><tr><th>From (ancestor)</th><th>To (descendant)</th><th>Kind</th><th>Words</th></tr></thead>
+        <tbody>${rows}</tbody>
+    </table>`
+            : ""
+    }`;
+
+    sendHtml(
+        res,
+        200,
+        layout({
+            title: "Language family – Dictionary",
+            search: { q: "" },
+            body: `<main class="content wide">
+    <p class="crumbs"><a href="/dictionary">Dictionary</a> › Language family</p>
+    <h1>Language family</h1>
+    ${body}
 </main>`
         })
     );
@@ -643,6 +708,11 @@ module.exports = async function dictionaryPages(req, res, url) {
                   ? languageUrl(slug)
                   : "/dictionary"
         );
+        return true;
+    }
+
+    if (first === "family" && parts.length === 1) {
+        familyPage(res);
         return true;
     }
 

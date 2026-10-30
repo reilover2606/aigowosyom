@@ -122,7 +122,19 @@ module.exports = async function dictionaryApi(req, res, url) {
         const languageParam = params.get("language");
         const languageId = languageParam ? parseInteger(languageParam, "language") : null;
 
-        sendJson(res, 200, dict.searchWords(q, { languageId, limit: 10 }));
+        // variantParents=1: only words that may be given variants.
+        const excludeParam = params.get("exclude");
+
+        sendJson(
+            res,
+            200,
+            dict.searchWords(q, {
+                languageId,
+                limit: 10,
+                variantParentsOnly: params.get("variantParents") === "1",
+                excludeId: excludeParam ? parseInteger(excludeParam, "exclude") : null
+            })
+        );
         return true;
     }
 
