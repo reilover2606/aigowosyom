@@ -1,0 +1,187 @@
+/* Public lore pages (encyclopedia). Colors come from --lang-color / --lang-ink
+   set per category on the page. */
+
+.lore-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 250px;
+    gap: 32px;
+    align-items: start;
+}
+
+@media (max-width: 860px) {
+    .lore-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.lore-category {
+    margin: 4px 0 14px;
+}
+
+.lore-category .lang-tag {
+    font-size: 0.8em;
+}
+
+.lore-body {
+    font-size: 1.05em;
+    line-height: 1.65;
+}
+
+.lore-body h2 {
+    margin: 1.5em 0 0.5em;
+    padding-bottom: 3px;
+    border-bottom: 1px solid var(--border);
+    font-size: 1.55em;
+    font-weight: normal;
+}
+
+.lore-body h3 {
+    margin: 1.3em 0 0.4em;
+    font-size: 1.25em;
+}
+
+.lore-body h4 {
+    margin: 1.2em 0 0.3em;
+    font-size: 1.05em;
+}
+
+.lore-body p {
+    margin: 0.7em 0;
+}
+
+.lore-body ul,
+.lore-body ol {
+    margin: 0.6em 0;
+    padding-left: 1.7em;
+}
+
+.lore-body li {
+    margin: 0.2em 0;
+}
+
+.lore-body blockquote {
+    margin: 1em 0;
+    padding: 0.4em 1.1em;
+    border-left: 4px solid var(--lang-color, var(--border));
+    background: #f6f6f3;
+    color: #3d3d3a;
+}
+
+.lore-body hr {
+    margin: 1.5em 0;
+    border: none;
+    border-top: 1px solid var(--border);
+}
+
+.lore-body table {
+    margin: 1em 0;
+    border-collapse: collapse;
+    max-width: 100%;
+}
+
+.lore-body th,
+.lore-body td {
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+}
+
+.lore-body th {
+    background: #f3f2ee;
+}
+
+.lore-body code,
+.lore-body pre {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.92em;
+}
+
+.lore-body pre {
+    padding: 10px 14px;
+    overflow-x: auto;
+    background: #f3f2ee;
+    border-radius: 4px;
+}
+
+.lore-body a.lore-link {
+    color: var(--link);
+}
+
+.lore-aside {
+    position: sticky;
+    top: 12px;
+    padding: 10px 14px 14px;
+    border: 1px solid var(--border);
+    border-top: 4px solid var(--lang-color, #6e7681);
+    border-radius: 6px;
+    background: #fcfcfb;
+    font-size: 0.92em;
+}
+
+.lore-aside h2 {
+    margin: 0 0 6px;
+    font-size: 1.05em;
+}
+
+.lore-aside ul {
+    margin: 0 0 12px;
+    padding: 0;
+    list-style: none;
+}
+
+.lore-aside li {
+    padding: 2px 0;
+}
+
+.lore-aside li.current {
+    font-weight: bold;
+}
+
+.lore-list {
+    margin: 10px 0;
+    padding: 0;
+    list-style: none;
+}
+
+.lore-list li {
+    margin: 0 0 12px;
+    break-inside: avoid;
+}
+
+.lore-list li > a:first-child {
+    font-weight: bold;
+    font-size: 1.05em;
+}
+
+.lore-list .gloss {
+    display: block;
+}
+
+.language-page .lore-list {
+    column-gap: 36px;
+}
+
+@media (min-width: 760px) {
+    .language-page .lore-list {
+        column-count: 2;
+    }
+}
+
+.search-results .lang-tag {
+    font-size: 0.75em;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+
+.search-snippet mark {
+    background: #fff0a0;
+    color: inherit;
+    padding: 0 1px;
+}
+
+.category-blurb {
+    margin-top: 6px;
+    font-size: 0.85em;
+    color: var(--muted);
+}

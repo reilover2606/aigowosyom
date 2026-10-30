@@ -14,20 +14,24 @@ const handlers = [
     require("./routes/calendar"),
     require("./routes/dictionary-api"),
     require("./routes/dictionary-pages"),
+    require("./routes/lore-api"),
+    require("./routes/lore-pages"),
     require("./lib/static")
 ];
 
 function sendError(req, res, url, status, message) {
     if (url && url.pathname.startsWith("/api/")) {
         sendJson(res, status, { error: message });
-    } else if (url && url.pathname.startsWith("/dictionary")) {
+    } else if (url && (url.pathname.startsWith("/dictionary") || url.pathname.startsWith("/lore"))) {
+        const section = url.pathname.startsWith("/lore") ? "lore" : "dictionary";
         sendHtml(
             res,
             status,
             layout({
+                section,
                 title: message,
                 search: { q: "" },
-                body: `<main class="content"><h1>${esc(message)}</h1><p><a href="/dictionary">Back to the dictionary</a></p></main>`
+                body: `<main class="content"><h1>${esc(message)}</h1><p><a href="/${section}">Back to ${section === "lore" ? "the lore" : "the dictionary"}</a></p></main>`
             })
         );
     } else {
