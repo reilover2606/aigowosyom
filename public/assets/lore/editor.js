@@ -966,9 +966,9 @@
 
     // Read-only list of the calendar notes inside an era, by year.
     function eraNotesPanel(era) {
-        const range = era.endYear === null
-            ? `from year ${era.startYear} on`
-            : `universal years ${era.startYear}–${era.endYear}`;
+        const range = era.lengthYears === null
+            ? `${era.name} from year 1 on`
+            : `${era.name} years 1–${era.lengthYears}`;
 
         return h("div", { class: "field era-notes-panel" },
             h("span", { class: "label" }, "Calendar notes in this era",
@@ -977,13 +977,20 @@
                 ? h("p", { class: "hint-block" }, "No calendar notes fall within this era yet.")
                 : era.groups.flatMap((group) => [
                     h("h4", { class: "era-year" },
-                        h("a", { href: `/calendar/?year=${group.year}`, target: "_blank" }, `Year ${group.year}`)),
+                        h("a", {
+                            href: `/calendar/?year=${group.year}`,
+                            target: "_blank",
+                            title: `Universal year ${group.year}`
+                        }, group.label)),
                     h("ul", { class: "era-note-list" },
                         ...group.notes.map((note) =>
                             h("li", {},
                                 h("div", { class: "era-note-date" },
-                                    h("a", { class: "conlang", href: `/calendar/?year=${group.year}`, target: "_blank" },
-                                        `${note.monthName} ${note.dayInMonth}`),
+                                    h("a", {
+                                        class: note.monthIsNative ? "conlang" : undefined,
+                                        href: `/calendar/?year=${group.year}`,
+                                        target: "_blank"
+                                    }, `${note.monthLabel} ${note.dayInMonth}`),
                                     h("span", { class: "muted" }, ` · ${note.gregorian}`)),
                                 note.title ? h("div", { class: "era-note-title" }, note.title) : null,
                                 h("div", { class: "era-note-body" }, note.body))))

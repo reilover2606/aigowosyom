@@ -1,59 +1,72 @@
-
 [
-        {
-        "name": "Niwosara 新雨",
-        "startYear": 1591
-    },
-	{
-        "name": "Nanarēlas 盛経",
-        "startYear": 1690
-    },
-	{
-        "name": "Kowisarā 時雨",
-        "startYear": 1722
-    },
-	{
-        "name": "Yasayoima 玉女",
-        "startYear": 1751
-    },
-	{
-        "name": "Hibloheigem 銀葉",
-        "startYear": 1769
-    },
-	{
-        "name": "Khīnkets 七巌",
-        "startYear": 1790
-    },
-	{
-        "name": "Okotokwēlyom 八周",
-        "startYear": 1818
-    },
-	{
-        "name": "Yophesētes 和令",
-        "startYear": 1876
-    },
-	{
-        "name": "Manasētes 真令",
-        "startYear": 1904
-    },
-	{
-        "name": "Kildabōna 金良",
-        "startYear": 1921
-    },
-	{
-        "name": "Seteillakons 穏巌",
-        "startYear": 1933
-    },
-	{
-        "name": "Tatamīram 立望",
-        "startYear": 1989
-    },
-    {
-        "name": "Kemairyom 夕咲",
-        "startYear": 2017
-    },
-    {
-        "name": "Later Kemairyom 後夕咲",
-        "startYear": 2050
-    }
+  {
+    "name": "Niwosara",
+    "sinographs": "新雨",
+    "startYear": 1591
+  },
+  {
+    "name": "Nanarēlas",
+    "sinographs": "盛経",
+    "startYear": 1690
+  },
+  {
+    "name": "Kowisarā",
+    "sinographs": "時雨",
+    "startYear": 1722
+  },
+  {
+    "name": "Yasayoima",
+    "sinographs": "玉女",
+    "startYear": 1751
+  },
+  {
+    "name": "Hibloheigem",
+    "sinographs": "銀葉",
+    "startYear": 1769
+  },
+  {
+    "name": "Khīnkets",
+    "sinographs": "七巌",
+    "startYear": 1790
+  },
+  {
+    "name": "Okotokwēlyom",
+    "sinographs": "八周",
+    "startYear": 1818
+  },
+  {
+    "name": "Yophesētes",
+    "sinographs": "和令",
+    "startYear": 1876
+  },
+  {
+    "name": "Manasētes",
+    "sinographs": "真令",
+    "startYear": 1904
+  },
+  {
+    "name": "Kildabōna",
+    "sinographs": "金良",
+    "startYear": 1921
+  },
+  {
+    "name": "Seteillakons",
+    "sinographs": "穏巌",
+    "startYear": 1933
+  },
+  {
+    "name": "Tatamīram",
+    "sinographs": "立望",
+    "startYear": 1989
+  },
+  {
+    "name": "Kemairyom",
+    "sinographs": "夕咲",
+    "startYear": 2017
+  },
+  {
+    "name": "Later Kemairyom",
+    "sinographs": "後夕咲",
+    "startYear": 2050
+  }
 ]

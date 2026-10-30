@@ -99,9 +99,9 @@ function categoryPage(res, category) {
 // The calendar notes inside an era, grouped by year (years without notes
 // are left out), with the calendar date each one fell on.
 function eraNotesHtml(era) {
-    const span = era.endYear === null
-        ? `from year ${era.startYear} on`
-        : `universal years ${era.startYear}–${era.endYear}`;
+    const span = era.lengthYears === null
+        ? `${esc(era.name)} from year 1 on`
+        : `${esc(era.name)} years 1–${era.lengthYears}`;
 
     const intro = `<p class="muted">Notes written in the <a href="/calendar/?year=${era.startYear}">calendar</a> for ${span}, in date order.
         A year shared with a neighbouring era appears in both. Edit them in the calendar.</p>`;
@@ -112,11 +112,11 @@ function eraNotesHtml(era) {
 
     const groups = era.groups
         .map(
-            (group) => `<h3 class="era-year"><a href="/calendar/?year=${group.year}">Year ${group.year}</a></h3>
+            (group) => `<h3 class="era-year"><a href="/calendar/?year=${group.year}" title="Universal year ${group.year}">${esc(group.label)}</a></h3>
         <ul class="era-note-list">${group.notes
             .map(
                 (note) => `<li>
-            <div class="era-note-date"><a class="conlang" href="/calendar/?year=${group.year}">${esc(note.monthName)} ${note.dayInMonth}</a> <span class="muted">· ${esc(note.gregorian)}</span></div>
+            <div class="era-note-date"><a${note.monthIsNative ? ' class="conlang"' : ""} href="/calendar/?year=${group.year}">${esc(note.monthLabel)} ${note.dayInMonth}</a> <span class="muted">· ${esc(note.gregorian)}</span></div>
             ${note.title ? `<div class="era-note-title">${esc(note.title)}</div>` : ""}
             <div class="era-note-body">${esc(note.body).replace(/\r?\n/g, "<br>")}</div>
         </li>`
@@ -146,7 +146,7 @@ function articlePage(res, category, page) {
     const era = page.era_start_year !== null ? eras.eraNotes(page.era_start_year) : null;
     const eraSpan = era
         ? `<p class="era-span">${
-              era.endYear === null ? `From universal year ${era.startYear}` : `Universal years ${era.startYear}–${era.endYear}`
+              era.lengthYears === null ? `From year 1 of ${esc(era.name)}` : `${esc(era.name)} years 1–${era.lengthYears}`
           } · <a href="/calendar/?year=${era.startYear}">Open in the calendar</a></p>`
         : "";
 

@@ -456,6 +456,11 @@ const WEEKDAYS = [
 
 let eras = [];
 
+// An era is shown as its name followed by its sinograph gloss, if it has one.
+function eraLabel(era) {
+    return era.sinographs ? `${era.name} ${era.sinographs}` : era.name;
+}
+
 // Last universal year that has an era. Later years have none.
 const ERA_HORIZON_YEAR = 2049;
 
@@ -517,7 +522,7 @@ function getErasForYear(year) {
 
         if (year >= startYear && year <= endYear) {
             result.push({
-                name: era.name,
+                name: eraLabel(era),
                 eraYear: year - startYear + 1
             });
         }
@@ -607,7 +612,7 @@ function displayEraTimeline(year) {
 
         const label = document.createElement("div");
         label.className = "era-segment-label conlang";
-        label.textContent = era.name;
+        label.textContent = eraLabel(era);
 
         segment.appendChild(label);
 
@@ -639,7 +644,7 @@ function displayEraTimeline(year) {
 		});
 
         segment.title =
-            `${era.name}: Universal Year ${era.startYear}` +
+            `${eraLabel(era)}: Universal Year ${era.startYear}` +
             (nextEra
                 ? `–${nextEra.startYear}`
                 : "–present");

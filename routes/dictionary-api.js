@@ -3,6 +3,8 @@
 // JSON API used by the dictionary editor.
 
 const dict = require("../lib/dictionary");
+const lore = require("../lib/lore");
+const eras = require("../lib/eras");
 const { HttpError, sendJson, readJson, parseInteger } = require("../lib/http");
 
 const PREFIX = "/api/dictionary/";
@@ -20,6 +22,8 @@ module.exports = async function dictionaryApi(req, res, url) {
     if (!url.pathname.startsWith(PREFIX)) {
         return false;
     }
+
+    eras.syncIfChanged();
 
     const parts = url.pathname.slice(PREFIX.length).split("/").filter(Boolean);
     const method = req.method;
@@ -97,6 +101,8 @@ module.exports = async function dictionaryApi(req, res, url) {
                 if (!word) {
                     throw new HttpError(404, "Word not found");
                 }
+                // Lore pages with the same title, so the editor can point at them.
+                word.lore_pages = lore.findPagesByTitleKeys(dict.loreTitleKeys([word]));
                 sendJson(res, 200, word);
                 return true;
             }
