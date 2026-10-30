@@ -4,6 +4,7 @@
 // on every request, so edits made in the editor show up immediately.
 
 const dict = require("../lib/dictionary");
+const lore = require("../lib/lore");
 const {
     HttpError,
     sendHtml,
@@ -611,6 +612,8 @@ function entryPage(res, language, headword) {
     }
 
     const others = dict.otherLanguagesWithHeadword(language.id, headword);
+    // Lore pages with the same title as this entry (also matched on "headword sinographs").
+    const lorePages = lore.findPagesByTitleKeys(dict.loreTitleKeys(words));
     const multiple = words.length > 1;
 
     sendHtml(
@@ -631,6 +634,16 @@ function entryPage(res, language, headword) {
                   .map(
                       (o) =>
                           `<a class="also-link" href="${entryUrl(o.language_slug, headword)}">${langBadge(o.language_name, o.language_color, o.language_ink)}</a>`
+                  )
+                  .join(" · ")}</p>`
+            : ""
+    }
+    ${
+        lorePages.length
+            ? `<p class="also">In the lore: ${lorePages
+                  .map(
+                      (p) =>
+                          `<a class="also-link" href="/lore/${encodeURIComponent(p.category_slug)}/${encodeURIComponent(p.slug)}">${langBadge(p.category_name, p.category_color, p.category_ink)} ${esc(p.title)}</a>`
                   )
                   .join(" · ")}</p>`
             : ""

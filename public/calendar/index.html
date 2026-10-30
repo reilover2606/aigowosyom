@@ -473,6 +473,13 @@ async function loadEraData() {
         // Ensure eras are sorted by starting year.
         eras.sort((a, b) => a.startYear - b.startYear);
 
+        // /calendar/?year=2026 opens that year (used by links from the lore).
+        const requestedYear = parseInt(new URLSearchParams(location.search).get("year"), 10);
+
+        if (Number.isInteger(requestedYear) && requestedYear >= 1) {
+            document.getElementById("yearInput").value = requestedYear;
+        }
+
         generateCalendar();
     } catch (error) {
         console.error("Error loading era data:", error);

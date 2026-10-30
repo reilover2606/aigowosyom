@@ -24,7 +24,7 @@
             }
         }
 
-        for (const child of children.flat()) {
+        for (const child of children.flat(Infinity)) {
             if (child === null || child === undefined || child === false) {
                 continue;
             }

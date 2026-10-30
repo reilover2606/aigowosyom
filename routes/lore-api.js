@@ -3,6 +3,7 @@
 // JSON API used by the lore editor.
 
 const lore = require("../lib/lore");
+const eras = require("../lib/eras");
 const { HttpError, sendJson, readJson, parseInteger } = require("../lib/http");
 const { stripLinkSyntax } = require("../lib/html");
 
@@ -21,10 +22,24 @@ function plainSnippet(row) {
     return row;
 }
 
+// A page for the editor; era pages also carry the calendar notes in their span.
+function pageJson(id) {
+    const page = lore.getPage(id);
+
+    if (page) {
+        page.is_era = page.era_start_year !== null;
+        page.era = page.is_era ? eras.eraNotes(page.era_start_year) : null;
+    }
+
+    return page;
+}
+
 module.exports = async function loreApi(req, res, url) {
     if (!url.pathname.startsWith(PREFIX)) {
         return false;
     }
+
+    eras.syncIfChanged();
 
     const parts = url.pathname.slice(PREFIX.length).split("/").filter(Boolean);
     const method = req.method;
@@ -91,7 +106,7 @@ module.exports = async function loreApi(req, res, url) {
         // POST /pages  { category_id, title, slug?, body }
         if (parts.length === 1 && method === "POST") {
             const id = lore.savePage(null, await readJson(req));
-            sendJson(res, 201, lore.getPage(id));
+            sendJson(res, 201, pageJson(id));
             return true;
         }
 
@@ -99,7 +114,7 @@ module.exports = async function loreApi(req, res, url) {
             const id = parseInteger(rawId, "id");
 
             if (method === "GET") {
-                const page = lore.getPage(id);
+                const page = pageJson(id);
                 if (!page) {
                     throw new HttpError(404, "Page not found");
                 }
@@ -109,7 +124,7 @@ module.exports = async function loreApi(req, res, url) {
 
             if (method === "PUT") {
                 lore.savePage(id, await readJson(req));
-                sendJson(res, 200, lore.getPage(id));
+                sendJson(res, 200, pageJson(id));
                 return true;
             }
 

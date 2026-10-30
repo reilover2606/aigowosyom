@@ -185,3 +185,71 @@
     font-size: 0.85em;
     color: var(--muted);
 }
+
+/* Cross-links to the dictionary and era pages */
+
+.lore-also {
+    margin: 4px 0 12px;
+    font-size: 0.92em;
+}
+
+.lore-also .lang-tag,
+.entry-page .also .lang-tag {
+    font-size: 0.75em;
+}
+
+.era-span {
+    margin: 0 0 6px;
+    font-size: 0.95em;
+    color: var(--muted);
+}
+
+.era-notes {
+    margin-top: 2em;
+}
+
+.era-notes h2 {
+    margin: 0 0 4px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid var(--border);
+    font-size: 1.55em;
+    font-weight: normal;
+}
+
+.era-year {
+    margin: 1.4em 0 0.3em;
+    font-size: 1.2em;
+}
+
+.era-year a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.era-year a:hover {
+    text-decoration: underline;
+}
+
+.era-note-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.era-note-list li {
+    margin: 0 0 12px;
+    padding: 6px 0 6px 12px;
+    border-left: 3px solid var(--lang-color, var(--border));
+}
+
+.era-note-date {
+    font-size: 0.92em;
+}
+
+.era-note-title {
+    font-weight: bold;
+}
+
+.era-note-body {
+    overflow-wrap: anywhere;
+}
