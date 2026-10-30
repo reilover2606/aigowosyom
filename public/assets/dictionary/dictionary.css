@@ -15,7 +15,6 @@
 
 body {
     margin: 0;
-    font-family: sans-serif;
     background: var(--bg);
     color: var(--text);
     line-height: 1.5;
@@ -97,7 +96,6 @@ a.missing {
 
 .content h1 {
     margin: 10px 0;
-    font-family: Georgia, serif;
     font-weight: normal;
     font-size: 2em;
 }
@@ -117,7 +115,6 @@ a.missing {
     margin: 20px 0 10px;
     padding-bottom: 4px;
     border-bottom: 1px solid var(--border);
-    font-family: Georgia, serif;
     font-weight: normal;
     font-size: 1.6em;
 }
@@ -156,7 +153,6 @@ a.missing {
 }
 
 .pronunciation {
-    font-family: "Charis SIL", "Doulos SIL", "Gentium Plus", serif;
 }
 
 .senses {
@@ -895,4 +891,123 @@ button.danger {
 
 .relations .lang-tag {
     font-size: 0.85em;
+}
+
+/* ---- Sorting, filters, random button, sound patterns ---- */
+
+.sort-control {
+    margin: 4px 0 10px;
+    font-size: 0.9em;
+    color: var(--muted);
+}
+
+.sort-control a {
+    margin-left: 6px;
+    padding: 1px 8px;
+    border-radius: 3px;
+    text-decoration: none;
+}
+
+.sort-control a.active {
+    background: var(--lang-color, var(--accent));
+    color: var(--lang-ink, #fff);
+}
+
+.chip-count {
+    margin-left: 2px;
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
+.letters a.conlang {
+    min-width: 28px;
+    text-align: center;
+}
+
+.entry-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 12px;
+}
+
+.button-link.small {
+    padding: 3px 10px;
+    font-size: 0.85em;
+    background: transparent;
+    color: var(--lang-color, var(--accent));
+    border-color: var(--lang-color, var(--accent));
+}
+
+.button-link.small:hover {
+    background: var(--lang-color, var(--accent));
+    color: var(--lang-ink, #fff);
+}
+
+.small-list {
+    font-size: 0.75em;
+    letter-spacing: 0.08em;
+    word-spacing: 0.35em;
+}
+
+.heatmap-scroll {
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.heatmap {
+    display: block;
+    max-width: none;
+}
+
+.heatmap text {
+    font-size: 10.5px;
+}
+
+.heatmap .hm-label {
+    font-size: 12px;
+    fill: var(--ink);
+}
+
+.heatmap .hm-edge {
+    fill: var(--ink-2);
+    font-weight: bold;
+}
+
+.heatmap .hm-cell rect,
+.heatmap rect.hm-cell {
+    stroke: var(--surface);
+    stroke-width: 1;
+}
+
+.heatmap .hm-cell:hover rect,
+.heatmap rect.hm-cell:hover {
+    stroke: #000;
+    stroke-width: 1.5;
+}
+
+.heatmap .hm-divider {
+    stroke: var(--ink-2);
+    stroke-width: 1.5;
+}
+
+.heat-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin: 10px 0 0;
+    font-size: 0.8em;
+    color: var(--ink-2);
+}
+
+.heat-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.heat-blank-swatch {
+    background: #f3f2ee;
+    border: 1px solid #c8ccd1;
 }

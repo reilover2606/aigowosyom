@@ -24,6 +24,7 @@ const { languageStats } = require("../lib/stats");
 const { resolveColor } = require("../lib/color");
 const charts = require("../lib/charts");
 const { familyView, KIND_STYLE } = require("../lib/family");
+const { soundPatterns, EDGE } = require("../lib/sounds");
 
 const PAGE_SIZE = 200;
 const SEARCH_LIMIT = 100;
@@ -56,7 +57,7 @@ function glossSnippet(gloss) {
 function relatedWordLink(rel) {
     return (
         `${langBadge(rel.language_name, rel.language_color, rel.language_ink, languageUrl(rel.language_slug))} ` +
-        `<a href="${entryUrl(rel.language_slug, rel.headword)}" lang="${esc(rel.language_slug)}">` +
+        `<a href="${entryUrl(rel.language_slug, rel.headword)}" class="conlang" lang="${esc(rel.language_slug)}">` +
         `${esc(displayHeadword(rel.headword, rel.language_is_proto))}</a>`
     );
 }
@@ -103,71 +104,126 @@ function homePage(res) {
 }
 
 function languagePage(res, language, params) {
-    const letter = params.get("letter") || null;
+    const sort = params.get("sort") === "pos" ? "pos" : "alpha";
+    const letter = sort === "alpha" ? params.get("letter") || null : null;
+    const pos = sort === "pos" ? params.get("pos") || null : null;
     const page = Math.max(1, Number(params.get("page")) || 1);
 
-    const initials = dict.listInitials(language.id);
     const { total, items } = dict.listWords(language.id, {
         letter,
+        pos,
+        sort,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE
     });
     const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const base = languageUrl(language.slug);
 
-    const letterNav = initials.length
-        ? `<nav class="letters" aria-label="Browse by initial">
-        <a href="${languageUrl(language.slug)}"${letter ? "" : ' class="active"'}>All</a>
+    // Links that keep the current sort and filters.
+    const link = (changes) => {
+        const q = new URLSearchParams();
+        const merged = { sort: sort === "pos" ? "pos" : null, letter, pos, ...changes };
+        for (const [key, value] of Object.entries(merged)) {
+            if (value) {
+                q.set(key, value);
+            }
+        }
+        const text = q.toString();
+        return text ? `?${text}` : base;
+    };
+
+    const sortControl = `<p class="sort-control">Sort:
+        <a href="${base}"${sort === "alpha" ? ' class="active"' : ""}>Alphabetical</a>
+        <a href="?sort=pos"${sort === "pos" ? ' class="active"' : ""}>Part of speech</a>
+    </p>`;
+
+    // Alphabetical: filter by initial letter. Part of speech: filter by POS.
+    let nav = "";
+
+    if (sort === "alpha") {
+        const initials = dict.listInitials(language.id);
+        nav = initials.length
+            ? `<nav class="letters" aria-label="Browse by initial">
+        <a href="${base}"${letter ? "" : ' class="active"'}>All</a>
         ${initials
             .map(
                 (item) =>
-                    `<a href="?letter=${encodeURIComponent(item.letter)}"${
-                        item.letter === letter ? ' class="active"' : ""
-                    } title="${item.n} entries">${esc(item.letter.toUpperCase())}</a>`
+                    `<a class="conlang${item.letter === letter ? " active" : ""}" href="${link({ letter: item.letter })}" title="${item.n} entries">${esc(item.letter.toUpperCase())}</a>`
             )
             .join("\n        ")}
     </nav>`
-        : "";
+            : "";
+    } else {
+        const parts = dict.listPartsOfSpeech(language.id);
+        nav = parts.length
+            ? `<nav class="letters" aria-label="Filter by part of speech">
+        <a href="?sort=pos"${pos ? "" : ' class="active"'}>All</a>
+        ${parts
+            .map((item) => {
+                const key = item.pos === null ? dict.NO_POS : item.pos;
+                return `<a href="${link({ pos: key })}"${key === pos ? ' class="active"' : ""}>${esc(
+                    item.pos === null ? "unspecified" : item.pos
+                )} <span class="chip-count">${item.n}</span></a>`;
+            })
+            .join("\n        ")}
+    </nav>`
+            : "";
+    }
 
+    // Group headings: initial letters, or parts of speech.
     let list = "";
-    let currentLetter = null;
+    let currentGroup;
 
     for (const word of items) {
-        const initial = word.sort_key.charAt(0).toUpperCase();
-        if (initial !== currentLetter) {
-            list += `${currentLetter === null ? "" : "</ul>"}<h2 class="letter-heading">${esc(initial)}</h2><ul class="word-list">`;
-            currentLetter = initial;
+        const group =
+            sort === "pos"
+                ? (word.pos ? word.pos.toLowerCase() : null)
+                : word.sort_key.charAt(0).toUpperCase();
+
+        if (group !== currentGroup) {
+            const heading =
+                sort === "pos"
+                    ? `<h2 class="letter-heading">${esc(capitalize(group === null ? "unspecified" : group))}</h2>`
+                    : `<h2 class="letter-heading conlang">${esc(group)}</h2>`;
+
+            list += `${currentGroup === undefined ? "" : "</ul>"}${heading}<ul class="word-list">`;
+            currentGroup = group;
         }
+
         list += `<li>
-            <a href="${entryUrl(language.slug, word.headword)}" lang="${esc(language.slug)}">${esc(
+            <a class="conlang" href="${entryUrl(language.slug, word.headword)}" lang="${esc(language.slug)}">${esc(
             displayHeadword(word.headword, language.is_proto)
         )}</a>
-            ${word.pos ? `<span class="pos-tag">${esc(word.pos)}</span>` : ""}
+            ${word.pos && sort !== "pos" ? `<span class="pos-tag">${esc(word.pos)}</span>` : ""}
             <span class="gloss">${esc(glossSnippet(word.gloss))}</span>
         </li>`;
     }
-    if (currentLetter !== null) {
+    if (currentGroup !== undefined) {
         list += "</ul>";
     }
 
-    const query = (page) =>
-        `?${letter ? `letter=${encodeURIComponent(letter)}&` : ""}page=${page}`;
     const pager =
         pages > 1
             ? `<nav class="pager">
-        ${page > 1 ? `<a href="${query(page - 1)}">← Previous</a>` : ""}
+        ${page > 1 ? `<a href="${link({ page: page - 1 })}">← Previous</a>` : ""}
         <span>Page ${page} of ${pages}</span>
-        ${page < pages ? `<a href="${query(page + 1)}">Next →</a>` : ""}
+        ${page < pages ? `<a href="${link({ page: page + 1 })}">Next →</a>` : ""}
     </nav>`
             : "";
 
-    const wordsTab = `<p class="muted">${total} ${total === 1 ? "entry" : "entries"}${
-        letter ? ` beginning with “${esc(letter.toUpperCase())}”` : ""
-    }${
-        initials.length
+    const filterText = letter
+        ? ` beginning with “${esc(letter.toUpperCase())}”`
+        : pos
+          ? ` with part of speech “${esc(pos === dict.NO_POS ? "unspecified" : pos)}”`
+          : "";
+
+    const wordsTab = `<p class="muted">${total} ${total === 1 ? "entry" : "entries"}${filterText}${
+        total
             ? ` · <a href="/dictionary/random?language=${encodeURIComponent(language.slug)}">Random word</a>`
             : ""
     }</p>
-    ${letterNav}
+    ${sortControl}
+    ${nav}
     ${list ? `<div class="word-columns">${list}</div>` : '<p class="muted">No entries.</p>'}
     ${pager}`;
 
@@ -179,7 +235,9 @@ function languageShell(language, activeTab, content) {
     const base = languageUrl(language.slug);
 
     return layout({
-        title: `${language.name}${activeTab === "stats" ? " statistics" : ""} – Dictionary`,
+        title: `${language.name}${
+            { stats: " statistics", sounds: " sound patterns" }[activeTab] || ""
+        } – Dictionary`,
         search: { q: "" },
         body: `<main class="content language-page" style="${langVars(language.display_color, language.ink)}">
     <p class="crumbs"><a href="/dictionary">Dictionary</a> › ${esc(language.name)}</p>
@@ -190,11 +248,90 @@ function languageShell(language, activeTab, content) {
     <nav class="tabs" aria-label="Language views">
         <a href="${base}"${activeTab === "words" ? ' class="active" aria-current="page"' : ""}>Words</a>
         <a href="${base}?view=stats"${activeTab === "stats" ? ' class="active" aria-current="page"' : ""}>Statistics</a>
+        <a href="${base}?view=sounds"${activeTab === "sounds" ? ' class="active" aria-current="page"' : ""}>Sound patterns</a>
         <a class="tab-aside" href="/dictionary/family">Family tree</a>
     </nav>
     ${content}
 </main>`
     });
+}
+
+function soundsPage(res, language, params) {
+    const keepMarks = params.get("marks") === "keep";
+    const patterns = soundPatterns(language.id, { keepMarks });
+    const base = languageUrl(language.slug);
+
+    if (patterns.letters.length === 0) {
+        sendHtml(
+            res,
+            200,
+            languageShell(language, "sounds", '<p class="muted">No entries yet, so there are no letter patterns to show.</p>')
+        );
+        return;
+    }
+
+    const { letters, vowelCount } = patterns;
+    const letterList = (list) =>
+        list.length
+            ? list.map((l) => `<span class="conlang">${esc(l)}</span>`).join(" ")
+            : '<span class="muted">none</span>';
+
+    const percentage = ((patterns.unattested / patterns.possible) * 100).toFixed(0);
+
+    const tile = (label, value, detail = "") => `<div class="stat-tile">
+        <div class="stat-value">${value}</div>
+        <div class="stat-label">${esc(label)}</div>
+        ${detail ? `<div class="stat-detail">${detail}</div>` : ""}
+    </div>`;
+
+    const pairLabel = (pair) => `${pair.from} → ${pair.to}`;
+
+    const html = `<div class="viz">
+    <p class="muted">Each cell counts how often the letter on the left is immediately followed by the letter along the top, across all headwords.
+        The <strong>#</strong> row shows which letters begin words and the <strong>#</strong> column which letters end them. Blank cells never occur.
+        Vowels (a e i o u) come first, then consonants (<em>y</em> is a consonant); this is spelling, not phonemes, so a digraph such as <em>kh</em> reads as k then h.</p>
+    <p class="sort-control">Accented letters:
+        <a href="${base}?view=sounds"${keepMarks ? "" : ' class="active"'}>merged with plain letters</a>
+        <a href="${base}?view=sounds&amp;marks=keep"${keepMarks ? ' class="active"' : ""}>kept distinct</a>
+    </p>
+
+    <div class="stat-tiles">
+        ${tile("Letters in use", letters.length, `${vowelCount} vowel${vowelCount === 1 ? "" : "s"}, ${patterns.consonantCount} consonant${patterns.consonantCount === 1 ? "" : "s"}`)}
+        ${tile("Letter pairs that never occur", `${percentage}%`, `${patterns.unattested.toLocaleString("en-US")} of ${patterns.possible.toLocaleString("en-US")} possible`)}
+        ${tile("Never begin a word", `<span class="small-list">${letterList(patterns.neverInitial)}</span>`)}
+        ${tile("Never end a word", `<span class="small-list">${letterList(patterns.neverFinal)}</span>`)}
+    </div>
+
+    <section class="chart-card">
+        <h2>Letter pairs</h2>
+        ${charts.heatmap({
+            rows: patterns.rows,
+            cols: patterns.cols,
+            cells: patterns.cells,
+            max: patterns.max,
+            edge: EDGE,
+            // after the # row, and between vowels and consonants (rows and columns)
+            rowBreaks: [1, 1 + vowelCount, 1 + vowelCount + patterns.consonantCount].filter(
+                (i, idx, all) => i < patterns.rows.length && all.indexOf(i) === idx
+            ),
+            colBreaks: [vowelCount, vowelCount + patterns.consonantCount, patterns.cols.length - 1].filter(
+                (i, idx, all) => i > 0 && i < patterns.cols.length && all.indexOf(i) === idx
+            ),
+            ariaLabel: `Heatmap of how often each letter is followed by each other letter in ${language.name} headwords. The most common pairs are listed below.`
+        })}
+        ${charts.heatLegend(patterns.max)}
+    </section>
+
+    <section class="chart-card">
+        <h2>Most common pairs</h2>
+        <p class="chart-note">The same data as a ranked list.</p>
+        ${charts.barList(
+            patterns.topPairs.map((pair) => ({ label: pairLabel(pair), count: pair.count, conlang: true }))
+        )}
+    </section>
+</div>`;
+
+    sendHtml(res, 200, languageShell(language, "sounds", html));
 }
 
 function ratioText(consonants, vowels) {
@@ -216,7 +353,7 @@ function statsPage(res, language) {
     const lettersTotal = stats.consonants + stats.vowels;
     const wordLink = (word) =>
         word
-            ? `<a href="${entryUrl(language.slug, word.headword)}" lang="${esc(language.slug)}">${esc(
+            ? `<a href="${entryUrl(language.slug, word.headword)}" class="conlang" lang="${esc(language.slug)}">${esc(
                   displayHeadword(word.headword, language.is_proto)
               )}</a> <span class="muted">(${word.length})</span>`
             : "–";
@@ -293,7 +430,7 @@ function statsPage(res, language) {
         "Letter frequency",
         `${charts.columnChart(
             stats.letters.map((item) => ({ ...item, cls: item.vowel ? 2 : 1 })),
-            { ariaLabel: `Letter frequency in ${language.name} headwords`, unit: "letters" }
+            { ariaLabel: `Letter frequency in ${language.name} headwords`, unit: "letters", conlangLabels: true }
         )}
         <ul class="legend legend-inline">
             <li><span class="swatch sw-1"></span><span class="legend-label">consonant or other</span></li>
@@ -373,17 +510,17 @@ function renderEntry(word, language, index, multiple) {
 
     if (word.pronunciation) {
         sections.push(
-            `<${innerTag}>Pronunciation</${innerTag}><ul><li class="pronunciation">${esc(word.pronunciation)}</li></ul>`
+            `<${innerTag}>Pronunciation</${innerTag}><ul><li class="pronunciation conlang">${esc(word.pronunciation)}</li></ul>`
         );
     }
 
     // Part of speech heading, headword line, and senses.
     const headwordLine =
         `<p class="headword-line">` +
-        `<strong class="headword" lang="${esc(language.slug)}">${esc(
+        `<strong class="headword conlang" lang="${esc(language.slug)}">${esc(
             displayHeadword(word.headword, language.is_proto)
         )}</strong>` +
-        (word.sinographs ? ` <span class="sinographs">${esc(word.sinographs)}</span>` : "") +
+        (word.sinographs ? ` <span class="sinographs conlang">${esc(word.sinographs)}</span>` : "") +
         (word.gender
             ? ` <abbr class="gender" title="${esc(word.gender)}">${GENDER_ABBREVIATIONS[word.gender]}</abbr>`
             : "") +
@@ -406,7 +543,7 @@ function renderEntry(word, language, index, multiple) {
             `<p class="relation"><strong>Variant of:</strong> ${word.variantOf
                 .map(
                     (v) =>
-                        `<a href="${entryUrl(v.language_slug, v.headword)}" lang="${esc(v.language_slug)}">${esc(
+                        `<a href="${entryUrl(v.language_slug, v.headword)}" class="conlang" lang="${esc(v.language_slug)}">${esc(
                             displayHeadword(v.headword, v.language_is_proto)
                         )}</a> <span class="muted">(${VARIANT_LABELS[v.kind]})</span>`
                 )
@@ -419,7 +556,7 @@ function renderEntry(word, language, index, multiple) {
             `<p class="relation"><strong>Variants:</strong> ${word.variantForms
                 .map(
                     (v) =>
-                        `<a href="${entryUrl(v.language_slug, v.headword)}" lang="${esc(v.language_slug)}">${esc(
+                        `<a href="${entryUrl(v.language_slug, v.headword)}" class="conlang" lang="${esc(v.language_slug)}">${esc(
                             displayHeadword(v.headword, v.language_is_proto)
                         )}</a> <span class="muted">(${VARIANT_LABELS[v.kind]})</span>`
                 )
@@ -462,7 +599,7 @@ function entryPage(res, language, headword) {
             ? `<p>Did you mean: ${suggestions
                   .map(
                       (s) =>
-                          `<a href="${entryUrl(language.slug, s.headword)}">${esc(s.headword)}</a>`
+                          `<a class="conlang" href="${entryUrl(language.slug, s.headword)}">${esc(s.headword)}</a>`
                   )
                   .join(", ")}?</p>`
             : ""
@@ -483,8 +620,11 @@ function entryPage(res, language, headword) {
             title: `${displayHeadword(headword, language.is_proto)} – ${language.name} – Dictionary`,
             search: { q: "" },
             body: `<main class="content entry-page" style="${langVars(language.display_color, language.ink)}">
-    <p class="crumbs"><a href="/dictionary">Dictionary</a> › <a href="${languageUrl(language.slug)}">${esc(language.name)}</a></p>
-    <h1 lang="${esc(language.slug)}">${esc(displayHeadword(headword, language.is_proto))}</h1>
+    <div class="entry-top">
+        <p class="crumbs"><a href="/dictionary">Dictionary</a> › <a href="${languageUrl(language.slug)}">${esc(language.name)}</a></p>
+        <a class="button-link small" href="/dictionary/random?language=${encodeURIComponent(language.slug)}&amp;from=${encodeURIComponent(headword)}" title="A random word in ${esc(language.name)}">🎲 Random ${esc(language.name)} word</a>
+    </div>
+    <h1 class="conlang" lang="${esc(language.slug)}">${esc(displayHeadword(headword, language.is_proto))}</h1>
     ${
         others.length
             ? `<p class="also">Also in: ${others
@@ -524,10 +664,10 @@ function searchPage(req, res, url) {
     const rows = results
         .map(
             (r) => `<li>
-            <a href="${entryUrl(r.language_slug, r.headword)}" lang="${esc(r.language_slug)}">${esc(
+            <a href="${entryUrl(r.language_slug, r.headword)}" class="conlang" lang="${esc(r.language_slug)}">${esc(
                 displayHeadword(r.headword, r.language_is_proto)
             )}</a>
-            ${r.sinographs ? `<span class="sinographs">${esc(r.sinographs)}</span>` : ""}
+            ${r.sinographs ? `<span class="sinographs conlang">${esc(r.sinographs)}</span>` : ""}
             ${langBadge(r.language_name, r.language_color, r.language_ink)}
             ${r.pos ? `<span class="pos-tag">${esc(r.pos)}</span>` : ""}
             <span class="gloss">${esc(glossSnippet(r.gloss))}</span>
@@ -697,7 +837,7 @@ module.exports = async function dictionaryPages(req, res, url) {
             languageId = scope.id;
         }
 
-        const word = dict.randomWord(languageId);
+        const word = dict.randomWord(languageId, languageId ? url.searchParams.get("from") : null);
         // Never cache: each visit should pick a new word.
         res.setHeader("Cache-Control", "no-store");
         redirect(
@@ -733,6 +873,8 @@ module.exports = async function dictionaryPages(req, res, url) {
             redirect(res, url.pathname + "/" + url.search, 301);
         } else if (url.searchParams.get("view") === "stats") {
             statsPage(res, language);
+        } else if (url.searchParams.get("view") === "sounds") {
+            soundsPage(res, language, url.searchParams);
         } else {
             languagePage(res, language, url.searchParams);
         }

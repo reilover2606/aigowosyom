@@ -5,10 +5,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tanakōdeyam Yearly Calendar</title>
+<link rel="stylesheet" href="/assets/site.css">
 
 <style>
     body {
-        font-family: sans-serif;
         margin: 30px auto;
         max-width: 1100px;
         padding: 0 20px;
@@ -599,7 +599,7 @@ function displayEraTimeline(year) {
         segment.style.flex = `${duration} 0 0`;
 
         const label = document.createElement("div");
-        label.className = "era-segment-label";
+        label.className = "era-segment-label conlang";
         label.textContent = era.name;
 
         segment.appendChild(label);
@@ -671,7 +671,7 @@ function displayEraInfo(year) {
 
     for (const era of matchingEras) {
         const entry = document.createElement("div");
-        entry.className = "era-entry";
+        entry.className = "era-entry conlang";
 
         entry.textContent = era.name + " ";
 
@@ -903,6 +903,7 @@ function generateCalendar() {
         monthDiv.className = "month";
 
         const heading = document.createElement("h2");
+        heading.className = "conlang";
         heading.textContent = month.name;
         monthDiv.appendChild(heading);
 
