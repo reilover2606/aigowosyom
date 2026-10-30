@@ -3,6 +3,7 @@
 const http = require("node:http");
 const { db } = require("./lib/db");
 require("./lib/eras").syncIfChanged(); // era pages for the lore section
+require("./lib/books").ensureBooksCategory(); // the built-in Books category
 const { HttpError, sendJson, sendHtml } = require("./lib/http");
 const { esc, layout } = require("./lib/render");
 

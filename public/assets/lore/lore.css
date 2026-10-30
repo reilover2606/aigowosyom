@@ -253,3 +253,9 @@
 .era-note-body {
     overflow-wrap: anywhere;
 }
+
+.era-note-book {
+    margin-top: 2px;
+    font-size: 0.85em;
+    color: var(--muted);
+}
