@@ -155,3 +155,37 @@ dialog.wide-dialog > input[type="search"] {
 .rich-area.lore-body {
     font-size: 16px;
 }
+
+/* Read-only calendar notes under an era page's body */
+
+.era-notes-panel .era-year {
+    margin: 12px 0 4px;
+    font-size: 1em;
+}
+
+.era-notes-panel .era-year a {
+    color: inherit;
+}
+
+.era-notes-panel .era-note-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.era-notes-panel .era-note-list li {
+    margin: 0 0 8px;
+    padding: 4px 0 4px 10px;
+    border-left: 3px solid var(--lang-color, var(--border));
+}
+
+.era-notes-panel .era-note-body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.field input:disabled,
+.field select:disabled {
+    background: #f3f2ee;
+    color: #6b6a66;
+}

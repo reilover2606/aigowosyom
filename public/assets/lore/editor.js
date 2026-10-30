@@ -792,7 +792,9 @@
             slug: "",
             slugTouched: false,
             categoryId: state.categoryId,
-            body: ""
+            body: "",
+            isEra: false,
+            era: null
         };
     }
 
@@ -803,7 +805,9 @@
             slug: page.slug,
             slugTouched: true,
             categoryId: page.category_id,
-            body: page.body
+            body: page.body,
+            isEra: Boolean(page.is_era),
+            era: page.era || null
         };
     }
 
@@ -867,6 +871,7 @@
             type: "text",
             name: "slug",
             value: draft.slug,
+            disabled: draft.isEra,
             autocomplete: "off",
             placeholder: "generated from the title",
             oninput: () => {
@@ -887,6 +892,7 @@
             type: "text",
             name: "title",
             value: draft.title,
+            disabled: draft.isEra,
             autocomplete: "off",
             maxlength: "200",
             oninput: () => {
@@ -902,6 +908,7 @@
 
         const moveSelect = h("select", {
             "aria-label": "Category of this page",
+            disabled: draft.isEra,
             onchange: () => {
                 draft.categoryId = Number(moveSelect.value);
                 markDirty();
@@ -925,7 +932,9 @@
                 badge(draftCategory.name, draftCategory.display_color, draftCategory.ink)),
 
             h("div", { class: "field-grid" },
-                h("div", { class: "field" }, h("label", {}, "Title"), titleInput),
+                h("div", { class: "field" },
+                    h("label", {}, "Title", draft.isEra ? h("span", { class: "hint" }, " — comes from the calendar's eras.json") : null),
+                    titleInput),
                 h("div", { class: "field" }, h("label", {}, "Category"), moveSelect)
             ),
             h("div", { class: "field" },
@@ -938,6 +947,8 @@
                 editor.element
             ),
 
+            draft.era ? eraNotesPanel(draft.era) : null,
+
             h("div", { class: "form-actions" },
                 h("button", { type: "button", class: "primary", onclick: save }, "Save"),
                 draft.id
@@ -948,8 +959,35 @@
                     : null,
                 statusEl,
                 h("span", { class: "spacer" }),
-                draft.id ? h("button", { type: "button", class: "danger", onclick: removePage }, "Delete") : null
+                draft.id && !draft.isEra ? h("button", { type: "button", class: "danger", onclick: removePage }, "Delete") : null
             )
+        );
+    }
+
+    // Read-only list of the calendar notes inside an era, by year.
+    function eraNotesPanel(era) {
+        const range = era.endYear === null
+            ? `from year ${era.startYear} on`
+            : `universal years ${era.startYear}–${era.endYear}`;
+
+        return h("div", { class: "field era-notes-panel" },
+            h("span", { class: "label" }, "Calendar notes in this era",
+                h("span", { class: "hint" }, ` — ${range}, in date order. Read-only here: edit them in the calendar.`)),
+            era.groups.length === 0
+                ? h("p", { class: "hint-block" }, "No calendar notes fall within this era yet.")
+                : era.groups.flatMap((group) => [
+                    h("h4", { class: "era-year" },
+                        h("a", { href: `/calendar/?year=${group.year}`, target: "_blank" }, `Year ${group.year}`)),
+                    h("ul", { class: "era-note-list" },
+                        ...group.notes.map((note) =>
+                            h("li", {},
+                                h("div", { class: "era-note-date" },
+                                    h("a", { class: "conlang", href: `/calendar/?year=${group.year}`, target: "_blank" },
+                                        `${note.monthName} ${note.dayInMonth}`),
+                                    h("span", { class: "muted" }, ` · ${note.gregorian}`)),
+                                note.title ? h("div", { class: "era-note-title" }, note.title) : null,
+                                h("div", { class: "era-note-body" }, note.body))))
+                ])
         );
     }
 
@@ -1008,10 +1046,12 @@
 
     function openCategoryDialog(category) {
         const editing = Boolean(category);
+        const builtIn = Boolean(category && category.system_key);
         let slugTouched = editing;
 
         const nameInput = h("input", {
             type: "text",
+            disabled: builtIn,
             value: category ? category.name : "",
             oninput: () => {
                 if (!slugTouched) {
@@ -1022,6 +1062,7 @@
         });
         const slugInput = h("input", {
             type: "text",
+            disabled: builtIn,
             value: category ? category.slug : "",
             oninput: () => { slugTouched = true; }
         });
@@ -1061,6 +1102,9 @@
 
         const dialog = h("dialog", {},
             h("h2", {}, editing ? `Edit ${category.name}` : "New category"),
+            builtIn
+                ? h("p", { class: "hint-block" }, "A built-in category: its name and slug can't be changed and it can't be deleted. You can still change its color and description.")
+                : null,
             h("div", { class: "field" }, h("label", {}, "Name"), nameInput),
             h("div", { class: "field" },
                 h("label", {}, "Slug", h("span", { class: "hint" }, " — used in URLs and [[slug|Page]] links")),
@@ -1105,7 +1149,7 @@
                 }, "Save"),
                 h("button", { type: "button", onclick: () => dialog.close() }, "Cancel"),
                 h("span", { class: "spacer" }),
-                editing
+                editing && !builtIn
                     ? h("button", {
                         type: "button",
                         class: "danger",

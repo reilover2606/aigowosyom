@@ -3,6 +3,8 @@
 // Server-rendered, read-only lore pages (a small encyclopedia).
 
 const lore = require("../lib/lore");
+const dict = require("../lib/dictionary");
+const eras = require("../lib/eras");
 const { HttpError, sendHtml, redirect, parseInteger } = require("../lib/http");
 const { esc, langVars, langBadge, layout, renderText, renderLoreHtml } = require("../lib/render");
 const { stripLinkSyntax } = require("../lib/html");
@@ -94,8 +96,59 @@ function categoryPage(res, category) {
     );
 }
 
+// The calendar notes inside an era, grouped by year (years without notes
+// are left out), with the calendar date each one fell on.
+function eraNotesHtml(era) {
+    const span = era.endYear === null
+        ? `from year ${era.startYear} on`
+        : `universal years ${era.startYear}–${era.endYear}`;
+
+    const intro = `<p class="muted">Notes written in the <a href="/calendar/?year=${era.startYear}">calendar</a> for ${span}, in date order.
+        A year shared with a neighbouring era appears in both. Edit them in the calendar.</p>`;
+
+    if (era.groups.length === 0) {
+        return `<section class="era-notes"><h2>Calendar notes</h2>${intro}<p class="muted">No calendar notes fall within this era yet.</p></section>`;
+    }
+
+    const groups = era.groups
+        .map(
+            (group) => `<h3 class="era-year"><a href="/calendar/?year=${group.year}">Year ${group.year}</a></h3>
+        <ul class="era-note-list">${group.notes
+            .map(
+                (note) => `<li>
+            <div class="era-note-date"><a class="conlang" href="/calendar/?year=${group.year}">${esc(note.monthName)} ${note.dayInMonth}</a> <span class="muted">· ${esc(note.gregorian)}</span></div>
+            ${note.title ? `<div class="era-note-title">${esc(note.title)}</div>` : ""}
+            <div class="era-note-body">${esc(note.body).replace(/\r?\n/g, "<br>")}</div>
+        </li>`
+            )
+            .join("")}</ul>`
+        )
+        .join("");
+
+    return `<section class="era-notes"><h2>Calendar notes</h2>${intro}${groups}</section>`;
+}
+
 function articlePage(res, category, page) {
     const siblings = lore.listPageBrief(category.id);
+
+    // Dictionary entries with the same name as this page.
+    const words = dict.findWordsByTitleKey(lore.fold(page.title));
+    const dictionaryLinks = words.length
+        ? `<p class="lore-also">In the dictionary: ${words
+              .map(
+                  (w) =>
+                      `<a class="also-link" href="/dictionary/${encodeURIComponent(w.language_slug)}/${encodeURIComponent(w.headword)}">${langBadge(w.language_name, w.language_color, w.language_ink)} <span class="conlang">${esc(w.language_is_proto ? "*" + w.headword : w.headword)}</span></a>`
+              )
+              .join(" · ")}</p>`
+        : "";
+
+    // Era pages show the span they cover and the calendar notes inside it.
+    const era = page.era_start_year !== null ? eras.eraNotes(page.era_start_year) : null;
+    const eraSpan = era
+        ? `<p class="era-span">${
+              era.endYear === null ? `From universal year ${era.startYear}` : `Universal years ${era.startYear}–${era.endYear}`
+          } · <a href="/calendar/?year=${era.startYear}">Open in the calendar</a></p>`
+        : "";
 
     const aside = `<aside class="lore-aside" aria-label="Pages in ${esc(category.name)}">
         <h2><a href="${categoryUrl(category.slug)}">${esc(category.name)}</a></h2>
@@ -123,9 +176,12 @@ function articlePage(res, category, page) {
         <article class="lore-article">
             <h1>${esc(page.title)}</h1>
             <p class="lore-category">${langBadge(category.name, category.display_color, category.ink, categoryUrl(category.slug))}</p>
+            ${eraSpan}
+            ${dictionaryLinks}
             <div class="lore-body">${
                 page.body ? renderLoreHtml(page.body) : '<p class="muted">This page has no content yet.</p>'
             }</div>
+            ${era ? eraNotesHtml(era) : ""}
         </article>
         ${aside}
     </div>
@@ -248,6 +304,8 @@ module.exports = async function lorePages(req, res, url) {
     if (req.method !== "GET" && req.method !== "HEAD") {
         throw new HttpError(405, "Method not allowed");
     }
+
+    eras.syncIfChanged();
 
     let parts;
     try {
