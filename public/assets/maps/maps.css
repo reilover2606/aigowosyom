@@ -495,9 +495,28 @@ dialog.choosing .actions {
     left: 10px;
     width: 34px;
     height: 34px;
-    font-size: 18px;
-    line-height: 1;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
+    color: #1d1d1d;
+    background: #fff;
+    border: 1px solid #8a8a8a;
+    border-radius: 4px;
+}
+
+.map-view .map-fullscreen svg {
+    width: 22px;
+    height: 22px;
+    stroke-width: 2.6;
+}
+
+/* Icons on the map pages are drawn larger and heavier than the text, so they read clearly. */
+.tree-row button.fold svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 3;
 }
 
 .map-layout:fullscreen,
