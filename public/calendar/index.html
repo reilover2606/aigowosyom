@@ -297,6 +297,12 @@
 		background: #fafafa;
 	}
 
+	/* The note a link pointed at. */
+	.note.note-target {
+		outline: 3px solid #d4a900;
+		outline-offset: 1px;
+	}
+
 	.note-title {
 		font-weight: bold;
 		margin-bottom: 4px;
@@ -830,6 +836,7 @@ async function loadEraData() {
         }
 
         generateCalendar();
+        openLinkedNote();
     } catch (error) {
         console.error("Error loading era data:", error);
 
@@ -1679,6 +1686,7 @@ function renderNotes(notes) {
     for (const note of notes) {
         const div = document.createElement("div");
         div.className = "note";
+        div.dataset.noteId = note.id;
         div.appendChild(buildNoteMenu(note));
 
         if (note.title) {
@@ -2183,6 +2191,7 @@ async function refreshNotes() {
 
     renderNotes(notes);
     setBadge(day, notes.length);
+    showLinkedNote();
 }
 
 // Fills the "Book" dropdown from the lore. Keeps the current choice if it
@@ -2288,6 +2297,37 @@ document.getElementById("calendar").addEventListener("click", (event) => {
     }
 });
 
+
+// /calendar/?year=…&day=…&note=… (links from search and the lore) opens that
+// day's notes and highlights the note.
+let linkedNoteId = null;
+
+function openLinkedNote() {
+    const params = new URLSearchParams(location.search);
+    const day = parseInt(params.get("day"), 10);
+    const note = parseInt(params.get("note"), 10);
+    const cell = Number.isInteger(day) ? document.querySelector(`#calendar .day[data-day="${day}"]`) : null;
+
+    if (cell) {
+        linkedNoteId = Number.isInteger(note) ? note : null;
+        openNotes(cell);
+    }
+}
+
+// After a day's notes are drawn: mark the linked note, once, and bring it into view.
+function showLinkedNote() {
+    if (linkedNoteId === null) {
+        return;
+    }
+
+    const target = notesList.querySelector(`.note[data-note-id="${linkedNoteId}"]`);
+    linkedNoteId = null;
+
+    if (target) {
+        target.classList.add("note-target");
+        target.scrollIntoView({ block: "nearest" });
+    }
+}
 
 // Generate the initial calendar on page load.
 loadEraData();

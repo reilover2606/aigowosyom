@@ -6,6 +6,7 @@
 const dict = require("../lib/dictionary");
 const lore = require("../lib/lore");
 const sitesearch = require("../lib/sitesearch");
+const { calendarUrl } = require("../lib/notes");
 const { HttpError, sendHtml, sendJson } = require("../lib/http");
 const { esc, langBadge, layout, snippetHtml } = require("../lib/render");
 const { excerpt } = require("../lib/html");
@@ -64,7 +65,7 @@ function searchPage(res, url) {
                 .join(" · ");
 
             return `<li>
-            <a href="${n.year ? `/calendar/?year=${n.year}` : "/calendar/"}">${esc(n.title || excerpt(n.body, 60))}</a>
+            <a href="${esc(calendarUrl(n.year, n))}">${esc(n.title || excerpt(n.body, 60))}</a>
             <span class="muted">${when}${n.gregorian ? ` · ${esc(n.gregorian)}` : ""}</span>
             <span class="gloss search-snippet">${snippetHtml(n.snippet)}</span>
         </li>`;

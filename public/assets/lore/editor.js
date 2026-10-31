@@ -991,7 +991,7 @@
                                 h("div", { class: "era-note-date" },
                                     h("a", {
                                         class: note.monthIsNative ? "conlang" : undefined,
-                                        href: `/calendar/?year=${group.year}`,
+                                        href: `/calendar/?year=${group.year}&day=${note.day}&note=${note.id}`,
                                         target: "_blank"
                                     }, `${note.monthLabel} ${note.dayInMonth}`),
                                     h("span", { class: "muted" }, ` · ${note.gregorian}`)),
