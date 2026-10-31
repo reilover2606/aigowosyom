@@ -45,6 +45,15 @@ html[data-theme="neumorph"] {
 
     --np-focus-ring: 0 0 0 2px rgba(48, 102, 190, 0.4);
 
+    /* Glassy blue for primary buttons. */
+    --np-glass-hi: rgba(236, 245, 255, 0.95);
+    --np-glass-mid: rgba(178, 212, 250, 0.9);
+    --np-glass-lo: rgba(142, 186, 244, 0.85);
+    --np-glass-edge: rgba(255, 255, 255, 0.85);
+    --np-glass-shine: rgba(255, 255, 255, 0.95);
+    --np-glass-glow: rgba(48, 102, 190, 0.22);
+    --np-glass-text: #13407f;
+
     /* The site's own tokens, pointed at this palette. */
     --bg: var(--np-bg);
     --panel: var(--np-bg);
@@ -263,16 +272,33 @@ html[data-theme="neumorph"] button:disabled {
     cursor: default;
 }
 
+/* Primary actions (New page, Save, ...): a light, glassy blue pane, so they
+   stand out from the plain raised buttons. */
 html[data-theme="neumorph"] button.primary {
-    background: var(--np-bg);
-    border-color: var(--np-light);
-    color: var(--np-primary);
+    background:
+        linear-gradient(150deg, var(--np-glass-hi) 0%, var(--np-glass-mid) 45%, var(--np-glass-lo) 100%);
+    border-color: var(--np-glass-edge);
+    box-shadow:
+        inset 0 1px 0 var(--np-glass-shine),
+        var(--np-raised-sm),
+        0 4px 12px var(--np-glass-glow);
+    color: var(--np-glass-text);
     font-weight: 600;
 }
 
-html[data-theme="neumorph"] button.primary:hover:not(:disabled) {
+html[data-theme="neumorph"] button.primary:hover:not(:disabled),
+html[data-theme="neumorph"] button.primary:focus-visible:not(:disabled) {
+    background: linear-gradient(150deg, var(--np-glass-lo) 0%, var(--np-glass-mid) 100%);
+    box-shadow:
+        var(--np-pressed-sm),
+        inset 0 0 0 1px var(--np-glass-edge);
+    color: var(--np-glass-text);
+}
+
+html[data-theme="neumorph"] button.primary:disabled {
     background: var(--np-bg);
-    color: var(--np-accent-text);
+    box-shadow: none;
+    color: var(--np-fg);
 }
 
 html[data-theme="neumorph"] button.danger {

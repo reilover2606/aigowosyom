@@ -4,6 +4,7 @@
 // on every request, so edits made in the editor show up immediately.
 
 const dict = require("../lib/dictionary");
+const Icons = require("../public/assets/icons.js");
 const lore = require("../lib/lore");
 const eras = require("../lib/eras");
 const {
@@ -96,7 +97,7 @@ function homePage(res) {
     <p class="muted">Search above, or choose a language to browse.</p>
     ${
         languages.some((lang) => lang.word_count > 0)
-            ? '<p><a class="button-link" href="/dictionary/random">🎲 Random word</a> <a class="button-link secondary" href="/dictionary/family">Language family tree</a></p>'
+            ? `<p><a class="button-link" href="/dictionary/random">${Icons.svg("dice")} Random word</a> <a class="button-link secondary" href="/dictionary/family">Language family tree</a></p>`
             : ""
     }
     <div class="language-grid">${cards}</div>
@@ -626,7 +627,7 @@ function entryPage(res, language, headword) {
             body: `<main class="content entry-page" style="${langVars(language.display_color, language.ink)}">
     <div class="entry-top">
         <p class="crumbs"><a href="/dictionary">Dictionary</a> › <a href="${languageUrl(language.slug)}">${esc(language.name)}</a></p>
-        <a class="button-link small" href="/dictionary/random?language=${encodeURIComponent(language.slug)}&amp;from=${encodeURIComponent(headword)}" title="A random word in ${esc(language.name)}">🎲 Random ${esc(language.name)} word</a>
+        <a class="button-link small" href="/dictionary/random?language=${encodeURIComponent(language.slug)}&amp;from=${encodeURIComponent(headword)}" title="A random word in ${esc(language.name)}">${Icons.svg("dice")} Random ${esc(language.name)} word</a>
     </div>
     <h1 class="conlang" lang="${esc(language.slug)}">${esc(displayHeadword(headword, language.is_proto))}</h1>
     ${

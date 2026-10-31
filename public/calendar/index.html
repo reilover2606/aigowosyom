@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tanakōdeyam Yearly Calendar</title>
 <script src="/assets/theme.js"></script>
+<script src="/assets/icons.js"></script>
 <link rel="stylesheet" href="/assets/site.css">
 
 <style>
@@ -1624,7 +1625,7 @@ function buildNoteMenu(note) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "note-menu-button";
-    button.textContent = "☰";
+    button.append(Icons.el("menu"));
     button.title = "More actions";
     button.setAttribute("aria-label", "More actions for this note");
     button.setAttribute("aria-haspopup", "menu");
@@ -1705,7 +1706,7 @@ function renderNotes(notes) {
         if (note.book_id) {
             const book = document.createElement("div");
             book.className = "note-book";
-            book.append("📖 ");
+            book.append(Icons.el("book"), " ");
 
             const link = document.createElement("a");
             link.href = `/lore/${encodeURIComponent(note.book_category_slug)}/${encodeURIComponent(note.book_slug)}`;
