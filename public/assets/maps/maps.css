@@ -1,0 +1,306 @@
+/* Maps. Colors are CSS variables so every theme (and dark mode) restyles the
+   map; map-core.js reads them. */
+
+:root {
+    --map-void: #dcdad2;
+    --map-sea: #cfe3ee;
+    --map-land: #efe6cf;
+    --map-coast: #8a7a55;
+    --map-lake: #cfe3ee;
+    --map-river: #6d9bc3;
+    --map-border: #4a3f2a;
+    --map-label: #2b2b2b;
+    --map-label-halo: rgba(255, 255, 255, 0.85);
+    --map-point: #7a1f1f;
+    --map-accent: #d4a900;
+}
+
+html[data-mode="dark"] {
+    --map-void: #101214;
+    --map-sea: #1d2f3d;
+    --map-land: #3b3a31;
+    --map-coast: #a89c78;
+    --map-lake: #1d2f3d;
+    --map-river: #5f8db5;
+    --map-border: #d9cfae;
+    --map-label: #ecebe4;
+    --map-label-halo: rgba(20, 22, 24, 0.85);
+    --map-point: #ff8f7a;
+    --map-accent: #f0c24b;
+}
+
+html[data-theme="neumorph"] {
+    --map-void: #e6e8ee;
+    --map-sea: #d3e0ee;
+    --map-land: #f3efe2;
+    --map-lake: #d3e0ee;
+}
+
+html[data-theme="neumorph"][data-mode="dark"] {
+    --map-void: #24272d;
+    --map-sea: #243545;
+    --map-land: #3e3f3a;
+    --map-lake: #243545;
+}
+
+/* ---- the viewer page ---- */
+
+.map-page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 16px 20px 30px;
+}
+
+.map-description {
+    max-width: 70ch;
+}
+
+.map-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 16px;
+    align-items: start;
+}
+
+@media (max-width: 800px) {
+    .map-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.map-view {
+    position: relative;
+    height: min(72vh, 760px);
+    min-height: 360px;
+    background: var(--map-void);
+    border: 1px solid var(--border, #c8ccd1);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.map-view .ol-viewport {
+    cursor: grab;
+}
+
+.map-view .ol-zoom {
+    top: 10px;
+    left: 10px;
+}
+
+.map-view .ol-zoom button {
+    width: 30px;
+    height: 30px;
+    margin: 2px;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.map-scale {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    padding: 4px 8px 6px;
+    border-radius: 4px;
+    background: var(--map-label-halo);
+    color: var(--map-label);
+    font-size: 12px;
+    pointer-events: none;
+}
+
+.map-scale-bar {
+    height: 6px;
+    margin-top: 2px;
+    border: 2px solid var(--map-label);
+    border-top: none;
+}
+
+.map-info {
+    padding: 14px 16px;
+    border: 1px solid var(--border, #c8ccd1);
+    border-radius: 6px;
+    background: var(--panel, #fff);
+    color: var(--text, #202122);
+}
+
+.map-info h2 {
+    margin: 0 0 6px;
+    font-size: 1.3em;
+}
+
+.map-info .muted {
+    color: var(--muted, #72777d);
+}
+
+.map-info .swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 6px;
+    border-radius: 3px;
+    vertical-align: -1px;
+}
+
+.map-info ul {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.map-info li button {
+    width: 100%;
+    margin: 2px 0;
+    text-align: left;
+}
+
+.map-info .state-name.sans {
+    font-family: var(--font-sans);
+}
+
+/* ---- the editor ---- */
+
+.map-editor {
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+    padding: 16px;
+}
+
+@media (max-width: 900px) {
+    .map-editor {
+        grid-template-columns: 1fr;
+    }
+}
+
+.map-editor .map-view {
+    height: calc(100vh - 80px);
+    min-height: 420px;
+}
+
+.map-editor.drawing .map-view .ol-viewport {
+    cursor: crosshair;
+}
+
+/* The tool panel and the map both stay in view; the panel scrolls by itself. */
+.map-side {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: sticky;
+    top: 8px;
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.map-main {
+    position: sticky;
+    top: 8px;
+}
+
+.map-side .box {
+    padding: 12px 14px;
+    border: 1px solid var(--border, #c8ccd1);
+    border-radius: 6px;
+    background: var(--panel, #fff);
+}
+
+.map-side .box h3 {
+    margin: 0 0 8px;
+    font-size: 1em;
+}
+
+.map-side .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.map-side .tool-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.map-side .tool-grid button.active {
+    background: var(--accent, #4a7c59);
+    border-color: var(--accent, #4a7c59);
+    color: #fff;
+}
+
+.map-side .hint {
+    margin: 8px 0 0;
+    font-size: 0.85em;
+    color: var(--muted, #72777d);
+}
+
+.map-side .field {
+    margin: 8px 0;
+}
+
+.map-side .field label {
+    display: block;
+    margin-bottom: 2px;
+    font-weight: 600;
+    font-size: 0.9em;
+}
+
+.map-side .field input[type="text"],
+.map-side .field input[type="number"],
+.map-side .field select,
+.map-side .field textarea {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.map-side .field.check {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.map-side .field.check label {
+    display: inline;
+    margin: 0;
+    font-weight: normal;
+}
+
+.map-side .field.check input {
+    width: auto;
+}
+
+.map-side .tracer {
+    padding: 8px 0;
+    border-top: 1px solid var(--border, #e3e5e8);
+}
+
+.map-side .tracer:first-of-type {
+    border-top: none;
+}
+
+.map-side .tracer .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 8px;
+}
+
+.map-side .tracer .grid input {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.map-side .tracer .grid label {
+    font-size: 0.75em;
+    font-weight: normal;
+}
+
+.map-status {
+    min-height: 1.2em;
+    font-size: 0.9em;
+}
+
+.map-status.error {
+    color: #b32424;
+}

@@ -7,6 +7,7 @@ const lore = require("../lib/lore");
 const dict = require("../lib/dictionary");
 const eras = require("../lib/eras");
 const books = require("../lib/books");
+const maps = require("../lib/maps");
 const { calendarUrl } = require("../lib/notes");
 const { HttpError, sendHtml, redirect, parseInteger } = require("../lib/http");
 const appConfig = require("../lib/config");
@@ -175,6 +176,10 @@ function articlePage(res, category, page) {
     const book = isBook ? books.bookNotes(page.id) : null;
 
     // Era pages show the span they cover and the calendar notes inside it.
+    const stateInfo = page.map_state_id !== null ? maps.stateInfo(page.map_state_id) : null;
+    const stateLine = stateInfo
+        ? `<p class="era-span">A state on the map <a href="/maps/${encodeURIComponent(stateInfo.map_slug)}?state=${stateInfo.id}">${esc(stateInfo.map_name)}</a></p>`
+        : "";
     const era = page.era_start_year !== null ? eras.eraNotes(page.era_start_year) : null;
     const eraSpan = era
         ? `<p class="era-span">${
@@ -209,6 +214,7 @@ function articlePage(res, category, page) {
             <h1>${esc(page.title)}</h1>
             <p class="lore-category">${langBadge(category.name, category.display_color, category.ink, categoryUrl(category.slug))}</p>
             ${eraSpan}
+            ${stateLine}
             ${dictionaryLinks}
             ${
                 page.body
