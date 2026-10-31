@@ -366,3 +366,58 @@ html[data-theme="neumorph"][data-mode="dark"] {
 .map-info .stats p {
     margin: 2px 0;
 }
+
+/* Elevation under the pointer. */
+.map-readout {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--map-label-halo);
+    color: var(--map-label);
+    font-size: 13px;
+    pointer-events: none;
+}
+
+.map-elevation-key {
+    display: inline-block;
+    width: 90px;
+    height: 10px;
+    margin: 0 6px;
+    vertical-align: middle;
+    border: 1px solid var(--border, #c8ccd1);
+    background: linear-gradient(to right, #1c1c1c, #7a7a7a 35%, #f3f3f3);
+}
+
+.map-options {
+    margin: 4px 0 10px;
+    font-size: 0.95em;
+}
+
+.map-options .muted {
+    color: var(--muted, #72777d);
+}
+
+/* Tools are grouped. */
+.map-side .tool-group h4 {
+    margin: 10px 0 4px;
+    font-size: 0.8em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted, #72777d);
+}
+
+.map-side .tool-group:first-of-type h4 {
+    margin-top: 0;
+}
+
+.map-side .brush {
+    margin-top: 10px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border, #e3e5e8);
+}
+
+.map-side .brush input[type="range"] {
+    width: 100%;
+}

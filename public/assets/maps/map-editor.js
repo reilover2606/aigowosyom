@@ -24,8 +24,12 @@
         draw: null, // a state being drawn: { points, target }
         followBorders: true,
         coastSnap: true,
+        elevation: null, // the grid being edited: { cols, rows, cell, updated_at, data }
+        // Elevation brushes: radius in miles; sharpness 0 (soft hills) to 1 (sharp peaks);
+        // how many feet a pixel of dragging is worth; how hard smoothing works.
+        brush: { radius: 40, sharpness: 0.35, feetPerPixel: 12, smoothing: 0.5 },
         multi: [], // states marked together (shift-click), for combining
-        layers: { tracers: true, land: true, lakes: true, rivers: true, waterNames: true, states: true, labels: true, points: true },
+        layers: { elevation: false, tracers: true, land: true, lakes: true, rivers: true, waterNames: true, states: true, labels: true, points: true },
         interactions: []
     };
 
@@ -169,11 +173,14 @@
             state.multi = [];
         }
 
+        await refreshElevation();
+
         if (remount || !state.view) {
             mountView();
         } else {
             state.view.rebuild(state.bundle);
             state.view.setImages(state.bundle.images);
+            state.view.setElevation(state.elevation);
         }
 
         state.view.select(state.selection, state.multi);
@@ -204,6 +211,7 @@
         const view = MapCore.create({ target: viewEl, bundle: state.bundle, editable: true });
         state.view = view;
         view.setImages(state.bundle.images);
+        view.setElevation(state.elevation);
 
         view.ol.addLayer(new ol.layer.Vector({
             source: handleSource,
@@ -234,6 +242,12 @@
         const accent = MapCore.colors.accent;
         const kind = feature.get("kind");
 
+        if (kind === "brush") {
+            return new ol.style.Style({
+                stroke: new ol.style.Stroke({ color: accent, width: 2, lineDash: [5, 5] }),
+                fill: new ol.style.Fill({ color: "rgba(212,169,0,0.10)" })
+            });
+        }
         if (kind === "snap") {
             return new ol.style.Style({
                 image: new ol.style.Circle({
@@ -475,6 +489,8 @@
         lake: "Click to add corners; double-click to finish. Hold Shift and drag to draw freehand.",
         river: "Click to add points along the river; double-click to finish. Hold Shift and drag for freehand.",
         ocean: "Draw a loose outline around the sea or ocean, then give it a name: the name is placed in the middle of the outline and sized to it. The outline is only shown here in the editor.",
+        elevate: "Press on the land and drag UP to raise it, DOWN to lower it: the land around is pulled along. A wide, soft brush makes hills and gradual slopes; a sharp one makes mountains.",
+        smooth: "Paint over the land to even out its elevation (softening ridges and valleys).",
         reshape: "Drag a corner to move it, drag an edge to add a corner, Alt-click a corner to remove it. Land, lakes and rivers snap to each other.",
         state: "Click corners. Clicking on a neighbour's border or corner shares it, and clicking on the coast snaps to it (clicking two points on the coast follows it). Double-click or Enter to finish, Backspace to undo a corner, Esc to cancel.",
         borders: "Drag a corner (shared corners move for every state; it snaps to the coast). Drop a corner on another to weld them. Double-click a border to add a corner; Alt-click a corner to remove it.",
@@ -483,7 +499,7 @@
         scale: "Click two points whose real distance you know, then enter it in miles."
     };
 
-    const DRAWING_MODES = ["land", "lake", "river", "ocean", "state", "place", "movePlace", "scale"];
+    const DRAWING_MODES = ["land", "lake", "river", "ocean", "state", "place", "movePlace", "scale", "elevate", "smooth"];
 
     function setMode(mode) {
         cancelDrawing();
@@ -511,6 +527,11 @@
                 addInteraction(new ol.interaction.Snap({ source: view.sources.land }));
             } else if (mode === "reshape") {
                 refreshModify();
+            } else if (mode === "elevate" || mode === "smooth") {
+                state.layers.elevation = true; // the shading is how you see what you are doing
+                applyLayerVisibility();
+                renderLayers();
+                installBrush(mode);
             }
         }
 
@@ -748,6 +769,8 @@
         }
         if (state.mode === "state" || state.mode === "scale") {
             updateRubber(event.coordinate);
+        } else if (state.mode === "elevate" || state.mode === "smooth") {
+            showBrush(event.coordinate);
         } else if (state.mode === "select") {
             viewEl.querySelector(".ol-viewport").style.cursor = state.view.pick(event.pixel) ? "pointer" : "";
         }
@@ -1659,6 +1682,7 @@
         for (const name of ["land", "lakes", "rivers", "states", "labels", "points"]) {
             view.show(name, state.layers[name]);
         }
+        view.showElevation(state.layers.elevation);
         view.show("oceans", state.layers.waterNames);
         view.show("waterLabels", state.layers.waterNames);
         view.setWaterNames(state.layers.waterNames);
@@ -1674,7 +1698,7 @@
     const layersEl = h("div", { class: "box" });
 
     function renderLayers() {
-        const names = [["tracers", "Tracer images"], ["land", "Land"], ["lakes", "Lakes"], ["rivers", "Rivers"], ["waterNames", "River, lake and sea names"], ["states", "States"], ["labels", "State names"], ["points", "Places"]];
+        const names = [["tracers", "Tracer images"], ["land", "Land"], ["lakes", "Lakes"], ["rivers", "Rivers"], ["elevation", "Elevation shading"], ["waterNames", "River, lake and sea names"], ["states", "States"], ["labels", "State names"], ["points", "Places"]];
         put(layersEl, 
             h("h3", {}, "Layers"),
             ...names.map(([key, label]) => h("div", { class: "field check" },
@@ -1691,30 +1715,287 @@
 
     const toolsEl = h("div", { class: "box" });
 
-    const TOOLS = [
-        ["select", "Select"],
-        ["land", "Draw land"],
-        ["lake", "Draw lake"],
-        ["river", "Draw river"],
-        ["ocean", "Name a sea"],
-        ["reshape", "Reshape shapes"],
-        ["state", "Draw state"],
-        ["borders", "Edit borders"],
-        ["place", "Add place"],
-        ["scale", "Set scale"]
+    // ------------------------------------------------------
+    // Elevation
+    // ------------------------------------------------------
+
+    // Fetches the grid when the server's copy is newer than ours.
+    async function refreshElevation() {
+        const meta = state.bundle ? state.bundle.elevation : null;
+        if (!meta) {
+            state.elevation = null;
+        } else if (!state.elevation || state.elevation.updated_at !== meta.updated_at || state.elevation.cols !== meta.cols) {
+            state.elevation = await MapCore.loadElevation(meta, state.mapId);
+        }
+    }
+
+    // How strongly a cell at `d` (0 at the centre of the brush, 1 at its edge)
+    // is moved: soft hills (a broad, smooth bump) at one end, sharp peaks (a
+    // narrow spike with steep sides) at the other.
+    function brushWeight(d, sharpness) {
+        if (d >= 1) {
+            return 0;
+        }
+        const soft = (1 - d * d) ** 2;
+        const sharp = (1 - d) ** 2.6;
+        return soft * (1 - sharpness) + sharp * sharpness;
+    }
+
+    function brushGeometry(coordinate) {
+        const grid = state.elevation;
+        const milesPerCell = grid.cell * currentMap().miles_per_unit;
+        const radius = Math.max(1, state.brush.radius / milesPerCell);
+        const centre = state.view.elevationCell(coordinate);
+        return { grid, radius, centre };
+    }
+
+    function showBrush(coordinate) {
+        sketchSource.clear();
+        if (!state.elevation) {
+            return;
+        }
+        const radiusUnits = state.brush.radius / currentMap().miles_per_unit;
+        sketchSource.addFeature(new ol.Feature({ geometry: new ol.geom.Circle(coordinate, radiusUnits), kind: "brush" }));
+    }
+
+    // Sends the changed rectangle of cells to the server.
+    async function saveElevation(rect) {
+        const grid = state.elevation;
+        const values = new Int16Array(rect.w * rect.h);
+        for (let row = 0; row < rect.h; row++) {
+            for (let col = 0; col < rect.w; col++) {
+                values[row * rect.w + col] = grid.data[(rect.y + row) * grid.cols + rect.x + col];
+            }
+        }
+        await guarded(async () => {
+            const response = await fetch(`/api/maps/${state.mapId}/elevation/patch?x=${rect.x}&y=${rect.y}&w=${rect.w}&h=${rect.h}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/octet-stream" },
+                body: values
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.error || `Could not save the elevation (${response.status})`);
+            }
+            grid.updated_at = payload.updated_at;
+        });
+    }
+
+    function installBrush(mode) {
+        let stroke = null;
+
+        const regionOf = (centre, radius) => {
+            const grid = state.elevation;
+            const x = Math.max(0, Math.floor(centre[0] - radius));
+            const y = Math.max(0, Math.floor(centre[1] - radius));
+            return {
+                x, y,
+                w: Math.min(grid.cols, Math.ceil(centre[0] + radius) + 1) - x,
+                h: Math.min(grid.rows, Math.ceil(centre[1] + radius) + 1) - y
+            };
+        };
+
+        const pointer = new ol.interaction.Pointer({
+            handleDownEvent(event) {
+                if (!state.elevation) {
+                    say("There is no land to shape yet: draw some land first (its elevation is made with it).", "error");
+                    return false;
+                }
+                const { grid, radius, centre } = brushGeometry(event.coordinate);
+                if (!centre || grid.data[centre[1] * grid.cols + centre[0]] === MapCore.NO_LAND) {
+                    return false; // the sea: the map pans instead
+                }
+
+                stroke = { mode, radius, startY: event.pixel[1], dirty: null };
+
+                if (mode === "elevate") {
+                    stroke.centre = centre;
+                    stroke.region = regionOf(centre, radius);
+                    // The cells as they were when the drag began: each move is worked out from these.
+                    stroke.before = new Int16Array(grid.data.buffer.slice(0));
+                    stroke.peak = grid.data[centre[1] * grid.cols + centre[0]];
+                } else {
+                    smoothAt(event.coordinate);
+                }
+                return true;
+            },
+            handleDragEvent(event) {
+                if (!stroke) {
+                    return;
+                }
+                showBrush(event.coordinate);
+                if (stroke.mode === "elevate") {
+                    raiseTo((stroke.startY - event.pixel[1]) * state.brush.feetPerPixel);
+                } else {
+                    smoothAt(event.coordinate);
+                }
+            },
+            handleUpEvent() {
+                const done = stroke;
+                stroke = null;
+                if (done && done.dirty) {
+                    saveElevation(done.dirty).then(() => say("Saved."));
+                }
+                return false;
+            },
+            handleMoveEvent(event) {
+                showBrush(event.coordinate);
+            }
+        });
+        addInteraction(pointer);
+
+        // Pull the land around the grabbed point up (or down) by `delta` feet at the centre.
+        function raiseTo(delta) {
+            const grid = state.elevation;
+            const { centre, radius, region, before } = stroke;
+            for (let row = region.y; row < region.y + region.h; row++) {
+                for (let col = region.x; col < region.x + region.w; col++) {
+                    const at = row * grid.cols + col;
+                    if (before[at] === MapCore.NO_LAND) {
+                        continue;
+                    }
+                    const d = Math.hypot(col - centre[0], row - centre[1]) / radius;
+                    grid.data[at] = Math.max(0, Math.min(29500, Math.round(before[at] + delta * brushWeight(d, state.brush.sharpness))));
+                }
+            }
+            stroke.dirty = region;
+            state.view.paintElevation(region);
+            const peak = grid.data[centre[1] * grid.cols + centre[0]];
+            say(`Elevation at the grabbed point: ${MapCore.feetText(peak)} (${delta >= 0 ? "+" : "−"}${Math.abs(Math.round(delta)).toLocaleString()} ft)`);
+        }
+
+        // One pass of smoothing under the brush: each cell moves toward the average of its neighbours.
+        function smoothAt(coordinate) {
+            const grid = state.elevation;
+            const { radius, centre } = brushGeometry(coordinate);
+            if (!centre) {
+                return;
+            }
+            const region = regionOf(centre, radius);
+            const copy = grid.data.slice();
+            for (let row = region.y; row < region.y + region.h; row++) {
+                for (let col = region.x; col < region.x + region.w; col++) {
+                    const at = row * grid.cols + col;
+                    if (copy[at] === MapCore.NO_LAND) {
+                        continue;
+                    }
+                    const d = Math.hypot(col - centre[0], row - centre[1]) / radius;
+                    if (d >= 1) {
+                        continue;
+                    }
+                    let sum = 0;
+                    let count = 0;
+                    for (let dy = -2; dy <= 2; dy++) {
+                        for (let dx = -2; dx <= 2; dx++) {
+                            const r = row + dy;
+                            const c = col + dx;
+                            if (r < 0 || c < 0 || r >= grid.rows || c >= grid.cols) {
+                                continue;
+                            }
+                            const value = copy[r * grid.cols + c];
+                            if (value !== MapCore.NO_LAND) {
+                                sum += value;
+                                count++;
+                            }
+                        }
+                    }
+                    const strength = state.brush.smoothing * brushWeight(d, 0);
+                    grid.data[at] = Math.round(copy[at] + (sum / count - copy[at]) * strength);
+                }
+            }
+            const merged = stroke.dirty
+                ? {
+                    x: Math.min(stroke.dirty.x, region.x),
+                    y: Math.min(stroke.dirty.y, region.y),
+                    w: Math.max(stroke.dirty.x + stroke.dirty.w, region.x + region.w) - Math.min(stroke.dirty.x, region.x),
+                    h: Math.max(stroke.dirty.y + stroke.dirty.h, region.y + region.h) - Math.min(stroke.dirty.y, region.y)
+                }
+                : region;
+            stroke.dirty = merged;
+            state.view.paintElevation(region);
+        }
+    }
+
+    // Starts all the land over as plains (hand edits are lost).
+    async function regeneratePlains() {
+        const answer = await ask({
+            title: "Start the land over as plains",
+            okLabel: "Regenerate",
+            danger: true,
+            extra: h("p", { class: "hint" }, "Every land cell is set again: it rises from the coast and levels off. Anything you have raised or lowered by hand is lost."),
+            fields: [
+                { key: "plateau", label: "Height of the plains inland (feet)", type: "number", value: 900, min: "0" },
+                { key: "rise", label: "Distance inland over which it rises (miles)", type: "number", value: 70, min: "1" },
+                { key: "ruggedness", label: "Size of the small ups and downs (feet)", type: "number", value: 70, min: "0" }
+            ]
+        });
+        if (!answer) {
+            return;
+        }
+        await guarded(async () => {
+            await api("POST", `/api/maps/${state.mapId}/elevation/regenerate`, {
+                plateau: Number(answer.plateau), rise: Number(answer.rise), ruggedness: Number(answer.ruggedness)
+            });
+            await load();
+            say("Plains regenerated.");
+        });
+    }
+
+    // Brush controls, shown while an elevation tool is chosen.
+    function brushControls() {
+        const grid = state.elevation;
+        const map = currentMap();
+        const slider = (label, key, min, max, step, format) => {
+            const value = h("span", { class: "hint" }, format(state.brush[key]));
+            const input = h("input", {
+                type: "range", min, max, step, value: state.brush[key],
+                oninput: (event) => {
+                    state.brush[key] = Number(event.target.value);
+                    value.textContent = format(state.brush[key]);
+                }
+            });
+            return h("div", { class: "field" }, h("label", {}, label, " ", value), input);
+        };
+
+        return h("div", { class: "brush" },
+            slider("Brush size", "radius", 3, 250, 1, (v) => `${v} mi`),
+            state.mode === "elevate"
+                ? slider("Sharpness", "sharpness", 0, 1, 0.05, (v) => (v < 0.25 ? "soft hills" : v > 0.7 ? "sharp mountains" : "ridges"))
+                : null,
+            state.mode === "elevate"
+                ? slider("Drag sensitivity", "feetPerPixel", 1, 100, 1, (v) => `${v} ft per pixel`)
+                : slider("Smoothing strength", "smoothing", 0.1, 1, 0.05, (v) => `${Math.round(v * 100)}%`),
+            grid
+                ? h("p", { class: "hint" }, `Elevation grid: ${grid.cols} × ${grid.rows} cells of ${Number((grid.cell * map.miles_per_unit).toPrecision(3))} mile${grid.cell * map.miles_per_unit === 1 ? "" : "s"}.`)
+                : h("p", { class: "hint" }, "No elevation yet: it is made when land is drawn."),
+            h("div", { class: "row" },
+                h("button", { type: "button", disabled: !grid, onclick: regeneratePlains }, "Start over as plains…")));
+    }
+
+    // The tools, in groups: geography on one side, states and borders on the other.
+    const TOOL_GROUPS = [
+        ["General", [["select", "Select"], ["place", "Add place"], ["scale", "Set scale"]]],
+        ["Geography", [
+            ["land", "Draw land"], ["lake", "Draw lake"], ["river", "Draw river"], ["ocean", "Name a sea"],
+            ["reshape", "Reshape shapes"], ["elevate", "Raise / lower"], ["smooth", "Smooth"]
+        ]],
+        ["States & borders", [["state", "Draw state"], ["borders", "Edit borders"]]]
     ];
 
     function renderTools() {
         const map = currentMap();
         put(toolsEl,
             h("h3", {}, "Tools"),
-            h("div", { class: "tool-grid" }, ...TOOLS.map(([mode, label]) =>
-                h("button", {
-                    type: "button",
-                    class: state.mode === mode ? "active" : "",
-                    disabled: !map,
-                    onclick: () => { state.drawTarget = null; setMode(mode); }
-                }, label))),
+            ...TOOL_GROUPS.map(([title, tools]) => h("div", { class: "tool-group" },
+                h("h4", {}, title),
+                h("div", { class: "tool-grid" }, ...tools.map(([mode, label]) =>
+                    h("button", {
+                        type: "button",
+                        class: state.mode === mode ? "active" : "",
+                        disabled: !map,
+                        onclick: () => { state.drawTarget = null; setMode(mode); }
+                    }, label))))),
+            state.mode === "elevate" || state.mode === "smooth" ? brushControls() : null,
             state.mode === "state" || state.mode === "borders"
                 ? h("div", { class: "field check" },
                     h("input", { type: "checkbox", id: "follow", checked: state.followBorders, onchange: (event) => { state.followBorders = event.target.checked; } }),

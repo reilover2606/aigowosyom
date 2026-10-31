@@ -115,12 +115,35 @@
         }
     }
 
+    // Elevation: shown on request, as lighter (higher) and darker (lower) land.
+    function addElevationOption() {
+        if (!bundle.elevation) {
+            return;
+        }
+        const box = el("input", { type: "checkbox", id: "showElevation" });
+        const options = el("div", { class: "map-options" },
+            box,
+            el("label", { for: "showElevation" }, "Show elevation"),
+            el("span", { class: "muted" }, " low", el("span", { class: "map-elevation-key" }), "high · point at the land for its height"));
+        document.querySelector(".map-layout").before(options);
+
+        let loaded = false;
+        box.addEventListener("change", async () => {
+            if (box.checked && !loaded) {
+                loaded = true;
+                view.setElevation(await MapCore.loadElevation(bundle.elevation, bundle.map.id));
+            }
+            view.showElevation(box.checked);
+        });
+    }
+
     fetch(`/api/maps/${mapId}`)
         .then((response) => response.json())
         .then((data) => {
             bundle = data;
             view = MapCore.create({ target, bundle, editable: false });
             overview();
+            addElevationOption();
 
             view.ol.on("singleclick", (event) => choose(view.pick(event.pixel), false));
             view.ol.on("pointermove", (event) => {

@@ -4,6 +4,7 @@
 // instance before it gets here (see server.js).
 
 const fs = require("node:fs");
+const zlib = require("node:zlib");
 const maps = require("../lib/maps");
 const config = require("../lib/config");
 const { HttpError, sendJson, readJson, readBuffer, parseInteger } = require("../lib/http");
@@ -24,6 +25,54 @@ module.exports = async function mapsApi(req, res, url) {
         sendJson(res, status, data);
         return true;
     };
+
+    // ---- Elevation ----------------------------------------------------
+    // GET  /api/maps/:id/elevation             the grid: signed 16-bit feet, little endian
+    // PUT  /api/maps/:id/elevation/patch?x&y&w&h   new heights for a rectangle of cells (same format)
+    // POST /api/maps/:id/elevation/regenerate  { plateau?, rise?, ruggedness? }  start the land over as plains
+    if (resource === "maps" && sub === "elevation") {
+        if (parts.length === 4 && method === "GET") {
+            const bytes = maps.elevation.bytesOf(id);
+            if (!bytes) {
+                throw new HttpError(404, "This map has no elevation yet.");
+            }
+            const gzip = /\bgzip\b/.test(String(req.headers["accept-encoding"] || ""));
+            const body = gzip ? zlib.gzipSync(bytes, { level: 6 }) : bytes;
+            res.writeHead(200, {
+                "Content-Type": "application/octet-stream",
+                "Content-Length": body.length,
+                "Cache-Control": "no-cache",
+                ...(gzip ? { "Content-Encoding": "gzip" } : {})
+            });
+            res.end(body);
+            return true;
+        }
+
+        if (parts.length === 5 && rawSub === "patch" && method === "PUT") {
+            const q = url.searchParams;
+            const bytes = await readBuffer(req, 40 * 1024 * 1024);
+            maps.elevation.patch(id, parseInteger(q.get("x"), "x"), parseInteger(q.get("y"), "y"), parseInteger(q.get("w"), "w"), parseInteger(q.get("h"), "h"), bytes);
+            return send(200, { ok: true, updated_at: maps.elevation.meta(id, 1).updated_at });
+        }
+
+        if (parts.length === 5 && rawSub === "regenerate" && method === "POST") {
+            const data = (await readJson(req)) || {};
+            const params = { ...maps.elevation.PLAINS };
+            for (const key of Object.keys(params)) {
+                if (data[key] !== undefined) {
+                    const n = Number(data[key]);
+                    if (!Number.isFinite(n) || n < 0 || n > 30000) {
+                        throw new HttpError(400, `Invalid ${key}`);
+                    }
+                    params[key] = n;
+                }
+            }
+            maps.elevation.sync(id, { reset: true, params });
+            return send(200, maps.bundle(id).elevation || {});
+        }
+
+        throw new HttpError(405, "Method not allowed");
+    }
 
     // ---- Maps -------------------------------------------------------
     if (resource === "maps") {

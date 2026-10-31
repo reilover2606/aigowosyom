@@ -239,6 +239,21 @@
     const lettered = (name) => name.toUpperCase().split("").join("\u2009");
 
     // ------------------------------------------------------
+    // Elevation
+    // ------------------------------------------------------
+
+    const NO_LAND = -32768;
+
+    // Lighter is higher. The scale bends so that plains (a few hundred feet)
+    // still show variation next to mountains (thousands).
+    function elevationShade(feet) {
+        const t = Math.pow(Math.min(1, Math.max(0, feet) / 8000), 0.55);
+        return Math.round(28 + t * 215);
+    }
+
+    const feetText = (feet) => `${Math.round(feet).toLocaleString()} ft`;
+
+    // ------------------------------------------------------
     // Building a map view
     // ------------------------------------------------------
 
@@ -439,6 +454,7 @@
             lakes: layer(sources.lakes, lakeStyle, 3),
             rivers: layer(sources.rivers, riverStyle, 4),
             oceans: layer(sources.oceans, oceanStyle, 1.5),
+            elevation: new ol.layer.Image({ zIndex: 2.5, visible: false, opacity: 0.7 }),
             states: layer(sources.states, stateStyle, 5),
             borders: layer(sources.borders, borderStyle, 6),
             outlines: layer(sources.outlines, outlineStyle, 6.5),
@@ -640,6 +656,126 @@
         view.repaint = repaint;
         view.updateScale = updateScale;
 
+        // ---- elevation: a shaded cell for every land cell ----
+        // view.elevation = { cols, rows, cell, data: Int16Array } (row 0 at the
+        // bottom of the map, -32768 where there is no land).
+        const readout = document.createElement("div");
+        readout.className = "map-readout";
+        readout.hidden = true;
+        olMap.getViewport().appendChild(readout);
+
+        let shade = null; // an offscreen canvas, one pixel per cell
+        let shadeContext = null;
+
+        const elevationSource = new ol.source.ImageCanvas({
+            projection,
+            ratio: 1,
+            canvasFunction(extentWanted, resolution, pixelRatio, size) {
+                const canvas = document.createElement("canvas");
+                canvas.width = size[0];
+                canvas.height = size[1];
+                if (shade && view.elevation) {
+                    const context = canvas.getContext("2d");
+                    const { cols, rows, cell } = view.elevation;
+                    context.imageSmoothingEnabled = false;
+                    // The grid covers [0, cols*cell] x [0, rows*cell]; canvas y runs down.
+                    context.drawImage(
+                        shade, 0, 0, cols, rows,
+                        (0 - extentWanted[0]) / resolution * pixelRatio,
+                        (extentWanted[3] - rows * cell) / resolution * pixelRatio,
+                        (cols * cell) / resolution * pixelRatio,
+                        (rows * cell) / resolution * pixelRatio
+                    );
+                }
+                return canvas;
+            }
+        });
+        view.layers.elevation.setSource(elevationSource);
+
+        // Paints cells (all of them, or the rectangle { x, y, w, h }) into the shading.
+        view.paintElevation = (rect) => {
+            const grid = view.elevation;
+            if (!grid) {
+                return;
+            }
+            const { x, y, w, h } = rect || { x: 0, y: 0, w: grid.cols, h: grid.rows };
+            const image = shadeContext.createImageData(w, h);
+            for (let row = 0; row < h; row++) {
+                for (let col = 0; col < w; col++) {
+                    const feet = grid.data[(y + row) * grid.cols + x + col];
+                    // Row 0 of the grid is the bottom of the picture.
+                    const at = ((h - 1 - row) * w + col) * 4;
+                    if (feet === NO_LAND) {
+                        image.data[at + 3] = 0;
+                    } else {
+                        const gray = elevationShade(feet);
+                        image.data[at] = image.data[at + 1] = image.data[at + 2] = gray;
+                        image.data[at + 3] = 255;
+                    }
+                }
+            }
+            shadeContext.putImageData(image, x, grid.rows - y - h);
+            elevationSource.changed();
+        };
+
+        // Sets (or clears, with null) the elevation grid to show.
+        view.setElevation = (grid) => {
+            view.elevation = grid;
+            if (!grid) {
+                shade = null;
+                elevationSource.changed();
+                return;
+            }
+            if (!shade || shade.width !== grid.cols || shade.height !== grid.rows) {
+                shade = document.createElement("canvas");
+                shade.width = grid.cols;
+                shade.height = grid.rows;
+                shadeContext = shade.getContext("2d", { willReadFrequently: true });
+            }
+            view.paintElevation();
+        };
+
+        // The cell under a map position: [col, row], or null off the grid.
+        view.elevationCell = (coordinate) => {
+            const grid = view.elevation;
+            if (!grid) {
+                return null;
+            }
+            const col = Math.floor(coordinate[0] / grid.cell);
+            const row = Math.floor(coordinate[1] / grid.cell);
+            return col >= 0 && row >= 0 && col < grid.cols && row < grid.rows ? [col, row] : null;
+        };
+
+        // Feet above the sea at a position, or null where it isn't land.
+        view.elevationAt = (coordinate) => {
+            const at = view.elevationCell(coordinate);
+            if (!at) {
+                return null;
+            }
+            const feet = view.elevation.data[at[1] * view.elevation.cols + at[0]];
+            return feet === NO_LAND ? null : feet;
+        };
+
+        view.showElevation = (on) => {
+            view.layers.elevation.setVisible(on);
+            if (!on) {
+                readout.hidden = true;
+            }
+        };
+
+        // Elevation under the pointer, while the shading is on.
+        olMap.on("pointermove", (event) => {
+            if (event.dragging || !view.layers.elevation.getVisible() || !view.elevation) {
+                return;
+            }
+            const feet = view.elevationAt(event.coordinate);
+            readout.hidden = feet === null;
+            if (feet !== null) {
+                readout.textContent = `Elevation ${feetText(feet)}`;
+            }
+        });
+        olMap.getViewport().addEventListener("mouseleave", () => { readout.hidden = true; });
+
         view.fit = (box, options = {}) => {
             olView.fit(box || extent, { padding: [30, 30, 30, 30], duration: options.animate ? 400 : 0, maxResolution: undefined, ...options });
         };
@@ -801,5 +937,21 @@
         capital: "Capital state", province: "Province", vassal: "Vassal", march: "March", territory: "Territory"
     };
 
-    window.MapCore = { create, colors, readColors, hexAlpha, stateCoordinates, vertexMap, stateTree, approx, STATUS_NAMES };
+    // Fetches a map's elevation grid ({ cols, rows, cell, data }), or null if it has none.
+    async function loadElevation(meta, mapId) {
+        if (!meta) {
+            return null;
+        }
+        const response = await fetch(`/api/maps/${mapId}/elevation`);
+        if (!response.ok) {
+            return null;
+        }
+        const buffer = await response.arrayBuffer();
+        return { cols: meta.cols, rows: meta.rows, cell: meta.cell, updated_at: meta.updated_at, data: new Int16Array(buffer) };
+    }
+
+    window.MapCore = {
+        create, colors, readColors, hexAlpha, stateCoordinates, vertexMap, stateTree, approx, STATUS_NAMES,
+        loadElevation, elevationShade, NO_LAND, feetText
+    };
 })();
