@@ -46,7 +46,7 @@ function viewerPage(map) {
         section: "maps",
         bar: "maps",
         styles: STYLES,
-        scripts: [...OPENLAYERS, "/assets/maps/map-core.js", "/assets/maps/map-viewer.js"],
+        scripts: [...OPENLAYERS, "/assets/maps/map-webgl.js", "/assets/maps/map-core.js", "/assets/maps/map-viewer.js"],
         body: `<main class="map-page">
     <p class="crumbs"><a href="/maps">Maps</a> › ${esc(map.name)}</p>
     <h1>${esc(map.name)}</h1>
@@ -67,7 +67,7 @@ function editorPage() {
         active: "editor",
         bar: "maps",
         styles: [...STYLES, "/assets/dictionary/editor.css"],
-        scripts: ["/assets/ui.js", ...OPENLAYERS, "/assets/maps/map-core.js", "/assets/maps/map-editor.js"],
+        scripts: ["/assets/ui.js", ...OPENLAYERS, "/assets/maps/map-webgl.js", "/assets/maps/map-core.js", "/assets/maps/map-editor.js"],
         body: `<main class="map-editor" id="mapEditor"><p class="muted">Loading…</p></main>`
     });
 }
