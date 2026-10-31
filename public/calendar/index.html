@@ -5,6 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tanakōdeyam Yearly Calendar</title>
+<script src="/assets/theme.js"></script>
 <link rel="stylesheet" href="/assets/site.css">
 
 <style>
@@ -397,7 +398,8 @@
 		padding-right: 34px; /* room for the menu button */
 	}
 
-	.notes-info {
+	.notes-info,
+	.bulk-result {
 		margin: 0 0 10px;
 		padding: 8px 10px;
 		border: 1px solid #b9d3bf;
@@ -408,7 +410,7 @@
 
 	/* Send to year */
 	#sendDialog {
-		width: min(520px, 92vw);
+		width: min(720px, 94vw);
 		border: 1px solid #999;
 		border-radius: 8px;
 		padding: 20px;
@@ -428,37 +430,105 @@
 		color: #555;
 	}
 
-	.send-row {
+	.date-fields {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 10px;
+		align-items: flex-end;
+	}
+
+	.date-field {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		font-size: 12px;
+		color: #666;
+	}
+
+	.date-field input {
+		width: 4.8em;
+	}
+
+	.date-field-month,
+	.date-field-era {
+		flex: 1 1 8em;
+		min-width: 0;
+	}
+
+	.date-field select {
+		width: 100%;
+	}
+
+	.date-field select,
+	.date-field input {
+		padding: 6px 8px;
+		font: inherit;
+		font-size: 15px;
+		color: #222;
+	}
+
+	#bulkDialog {
+		width: min(620px, 92vw);
+		border: 1px solid #999;
+		border-radius: 8px;
+		padding: 20px;
+	}
+
+	#bulkDialog::backdrop {
+		background: #0006;
+	}
+
+	#bulkDialog h2 {
+		margin: 0 0 6px;
+	}
+
+	.year-pick {
+		margin: 0 0 8px;
+		padding: 6px 10px 10px;
+		border: 1px solid #ddd;
+		border-radius: 6px;
+	}
+
+	.year-pick legend {
+		padding: 0 6px;
+		font-size: 13px;
+		color: #666;
+	}
+
+	.year-pick-row {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		margin-bottom: 8px;
 	}
 
-	.send-row label {
-		flex: 0 0 8.5em;
-		font-size: 14px;
-	}
-
-	.send-row select {
+	.year-pick-row select {
 		flex: 1;
 		min-width: 0;
 	}
 
-	.send-row input {
-		width: 6em;
+	.year-pick-row input {
+		width: 5.5em;
 	}
 
-	.send-row select,
-	.send-row input {
+	.year-pick-row select,
+	.year-pick-row input {
 		padding: 6px 8px;
 		font: inherit;
 		font-size: 15px;
 	}
 
-	.send-hint {
+	.year-pick-or {
 		font-size: 12px;
 		color: #777;
+	}
+
+	.send-preview ul {
+		margin: 4px 0 8px;
+		padding-left: 1.3em;
+	}
+
+	.send-preview p {
+		margin: 0 0 6px;
 	}
 
 	.send-preview {
@@ -548,16 +618,19 @@
 		}
 	}
 </style>
+<link rel="stylesheet" href="/assets/themes/neumorph.css">
 </head>
 
 <body>
 
 <nav class="sitebar sitebar-float" aria-label="Sections of the site">
-    <a class="sitebar-home" href="/">Aigowosyom</a>
     <a href="/calendar/" aria-current="page">Calendar</a>
     <a href="/lore">Lore</a>
     <a href="/dictionary">Dictionary</a>
+    <label class="theme-switch"><span>Theme</span><select id="themeSelect" aria-label="Theme"></select></label>
 </nav>
+
+<p class="home-link"><a href="/">← Home</a></p>
 
 <h1>Tanakōdeyam</h1>
 
@@ -569,6 +642,7 @@
     <input type="number" id="yearInput" value="2026" min="1">
     <button onclick="generateCalendar()">Jump</button>
     <button onclick="window.print()">Print</button>
+    <button type="button" id="bulkOpen" title="Move every note from one year to another">Move a year's notes…</button>
 </div>
 
 <div class="controls era-controls">
@@ -607,23 +681,67 @@
 </dialog>
 
 <dialog id="sendDialog">
-    <h2>Send note to another year</h2>
+    <h2>Move note to another date</h2>
     <p id="sendSummary" class="send-summary"></p>
     <form id="sendForm">
-        <div class="send-row">
-            <label for="sendEra">Era and year</label>
-            <select id="sendEra"></select>
-            <input type="number" id="sendEraYear" min="1" aria-label="Year within the era">
-        </div>
-        <div class="send-row">
-            <label for="sendGregYear">Gregorian year</label>
-            <input type="number" id="sendGregYear" min="1">
-            <span class="send-hint">the calendar's year number</span>
+        <div class="date-fields">
+            <label class="date-field">
+                <span>Day</span>
+                <input type="number" id="sendDay" min="1" max="40">
+            </label>
+            <label class="date-field date-field-month">
+                <span>Month</span>
+                <select id="sendMonth"></select>
+            </label>
+            <label class="date-field date-field-era">
+                <span>Era</span>
+                <select id="sendEra"></select>
+            </label>
+            <label class="date-field">
+                <span>Year in era</span>
+                <input type="number" id="sendEraYear" min="1">
+            </label>
+            <label class="date-field">
+                <span>Gregorian year</span>
+                <input type="number" id="sendGregYear" min="1">
+            </label>
         </div>
         <p id="sendPreview" class="send-preview"></p>
         <div class="note-form-buttons">
-            <button type="submit" id="sendSubmit">Send</button>
+            <button type="submit" id="sendSubmit">Move</button>
             <button type="button" id="sendCancel">Cancel</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="bulkDialog">
+    <h2>Move all notes from a year</h2>
+    <p class="send-summary">Every note in the first year moves to the same month and day in the second.</p>
+    <form id="bulkForm">
+        <fieldset class="year-pick">
+            <legend>From</legend>
+            <div class="year-pick-row">
+                <select id="bulkFromEra" aria-label="From: era"></select>
+                <input type="number" id="bulkFromEraYear" min="1" aria-label="From: year in era">
+                <span class="year-pick-or">Gregorian</span>
+                <input type="number" id="bulkFromGreg" min="1" aria-label="From: Gregorian year">
+            </div>
+        </fieldset>
+        <fieldset class="year-pick">
+            <legend>To</legend>
+            <div class="year-pick-row">
+                <select id="bulkToEra" aria-label="To: era"></select>
+                <input type="number" id="bulkToEraYear" min="1" aria-label="To: year in era">
+                <span class="year-pick-or">Gregorian</span>
+                <input type="number" id="bulkToGreg" min="1" aria-label="To: Gregorian year">
+            </div>
+        </fieldset>
+        <div id="bulkPreview" class="send-preview"></div>
+        <div id="bulkResult" class="bulk-result" hidden></div>
+        <div class="note-form-buttons">
+            <button type="submit" id="bulkSubmit">Move notes</button>
+            <button type="button" id="bulkShow" hidden>Show that year</button>
+            <button type="button" id="bulkCancel">Close</button>
         </div>
     </form>
 </dialog>
@@ -1319,6 +1437,11 @@ function eraYearLabel(year) {
     return match ? `${eraLabel(match.era)} ${match.number}` : `Year ${year}`;
 }
 
+// "Kemairyom 夕咲 10 (year 2026)", or just "year 1500" before the first era.
+function yearName(year) {
+    return eraForYear(year) ? `${eraYearLabel(year)} (year ${year})` : `year ${year}`;
+}
+
 function fillEraSelect(select) {
     select.replaceChildren(
         ...eras.map((era) => new Option(eraLabel(era), String(era.startYear)))
@@ -1507,7 +1630,7 @@ function buildNoteMenu(note) {
     const sendItem = document.createElement("button");
     sendItem.type = "button";
     sendItem.setAttribute("role", "menuitem");
-    sendItem.textContent = "Send to year…";
+    sendItem.textContent = "Move to date…";
     sendItem.addEventListener("click", () => {
         closeNoteMenus();
         openSendDialog(note);
@@ -1634,45 +1757,75 @@ function showNotesInfo(message) {
     notesList.prepend(info);
 }
 
-// ---- Send a note to another year -------------------------------------
+// ---- Year entry: era + number or Gregorian year, kept in step -----------
 //
-// The note keeps its calendar month and its day within the month and moves to
-// the same place in another year. Months differ in length from year to year
-// (the cut-off months Liāmoin and Elendāmoin and the two intercalary periods
-// especially), so a day past the end of the new month is shortened to the
-// month's last day, and a month with no days that year can't be targeted.
+// Binds an era dropdown, a year-in-era box and a Gregorian-year box so that
+// editing one fills in the other. `onChange(year)` runs after every edit;
+// the year is null while the entry is incomplete.
 
-const sendDialog = document.getElementById("sendDialog");
-const sendForm = document.getElementById("sendForm");
-const sendEra = document.getElementById("sendEra");
-const sendEraYear = document.getElementById("sendEraYear");
-const sendGregYear = document.getElementById("sendGregYear");
-const sendPreview = document.getElementById("sendPreview");
-const sendSubmit = document.getElementById("sendSubmit");
+function bindYearPicker(eraSelectEl, eraYearEl, gregorianEl, onChange) {
+    let value = null;
 
-let sendingNote = null;     // the note being sent
-let sendTargetYear = null;  // the year currently entered, or null
-let sendPlan = null;        // where the note would land, or null if it can't
-let lastSendYear = null;    // remembered so a run of notes goes to the same year
+    function fromEra() {
+        value = readEraYear(eraSelectEl, eraYearEl);
+        gregorianEl.value = value === null ? "" : value;
+        onChange(value);
+    }
 
-// Where the active note's month/day falls in another year.
-function planMove(targetYear) {
-    const month = buildYear(targetYear)[activeCell.monthIndex];
+    function fromGregorian() {
+        const year = parseInt(gregorianEl.value, 10);
+        value = Number.isInteger(year) && year >= 1 ? year : null;
+
+        if (value === null) {
+            eraYearEl.value = "";
+        } else {
+            showEraYear(eraSelectEl, eraYearEl, value);
+        }
+
+        onChange(value);
+    }
+
+    eraSelectEl.addEventListener("change", fromEra);
+    eraYearEl.addEventListener("input", fromEra);
+    gregorianEl.addEventListener("input", fromGregorian);
+
+    return {
+        get: () => value,
+        // Shows a year in all three boxes (without calling onChange).
+        set(year) {
+            fillEraSelect(eraSelectEl);
+            value = year;
+            gregorianEl.value = year === null ? "" : year;
+            showEraYear(eraSelectEl, eraYearEl, year);
+        }
+    };
+}
+
+// Where a month and day-in-month fall in a year. Months differ in length from
+// year to year (the cut-off months Liāmoin and Elendāmoin and the two
+// intercalary periods especially), so a day past the end of the month is
+// shortened to its last day, and a month with no days that year can't be used.
+// Mirrors planDayInYear() in lib/calendar.js; keep them in step.
+function planMove(year, monthIndex, dayInMonth) {
+    const month = buildYear(year)[monthIndex];
     const first = firstCivilDay(month.start);
     const length = lastCivilDay(month.end) - first + 1;
 
     if (length <= 0) {
-        return { ok: false, error: `${month.name} has no days in ${eraYearLabel(targetYear)} (year ${targetYear}), so a note can't be sent there.` };
+        return {
+            ok: false,
+            error: `${month.name} has no days in ${yearName(year)}, so a note can't go there.`
+        };
     }
 
-    const dayInMonth = Math.min(activeCell.dayInMonth, length);
+    const day = Math.min(dayInMonth, length);
 
     return {
         ok: true,
-        day: first + dayInMonth - 1,
-        dayInMonth,
+        day: first + day - 1,
+        dayInMonth: day,
         length,
-        clamped: dayInMonth !== activeCell.dayInMonth,
+        clamped: day !== dayInMonth,
         monthName: month.name
     };
 }
@@ -1681,22 +1834,50 @@ function describePlan(year, plan) {
     return `${plan.monthName} ${plan.dayInMonth}, ${eraYearLabel(year)} · ${formatDate(plan.day)}`;
 }
 
+
+// ---- Move a note to another date -------------------------------------
+//
+// The dialog opens on the note's own day, month and year, so moving it to a
+// different year is a matter of changing only the year; day and month can be
+// changed too.
+
+const sendDialog = document.getElementById("sendDialog");
+const sendForm = document.getElementById("sendForm");
+const sendDay = document.getElementById("sendDay");
+const sendMonth = document.getElementById("sendMonth");
+const sendPreview = document.getElementById("sendPreview");
+const sendSubmit = document.getElementById("sendSubmit");
+
+let sendingNote = null;  // the note being moved
+let sendPlan = null;     // where it would land, or null if it can't
+
+const sendYear = bindYearPicker(
+    document.getElementById("sendEra"),
+    document.getElementById("sendEraYear"),
+    document.getElementById("sendGregYear"),
+    () => updateSendPreview()
+);
+
 function updateSendPreview() {
     sendPlan = null;
     sendSubmit.disabled = true;
     sendPreview.classList.remove("error");
 
-    if (sendTargetYear === null) {
-        sendPreview.textContent = "Enter a year to send this note to.";
+    const year = sendYear.get();
+    const dayInMonth = parseInt(sendDay.value, 10);
+    const monthIndex = parseInt(sendMonth.value, 10);
+
+    if (year === null) {
+        sendPreview.textContent = "Enter a year to move this note to.";
         return;
     }
 
-    if (sendTargetYear === activeCell.year) {
-        sendPreview.textContent = "The note is already in that year.";
+    if (!Number.isInteger(dayInMonth) || dayInMonth < 1) {
+        sendPreview.textContent = "Enter a day of the month.";
         return;
     }
 
-    const plan = planMove(sendTargetYear);
+    const plan = planMove(year, monthIndex, dayInMonth);
 
     if (!plan.ok) {
         sendPreview.classList.add("error");
@@ -1704,23 +1885,29 @@ function updateSendPreview() {
         return;
     }
 
-    sendPlan = plan;
+    if (plan.day === sendingNote.day) {
+        sendPreview.textContent = "The note is already on that date.";
+        return;
+    }
+
+    sendPlan = { ...plan, year, requestedDay: dayInMonth };
     sendSubmit.disabled = false;
     sendPreview.textContent =
-        `Will be sent to ${describePlan(sendTargetYear, plan)}` +
+        `Will be moved to ${describePlan(year, plan)}` +
         (plan.clamped
-            ? `\n${plan.monthName} has only ${plan.length} days that year, so the note goes to its last day (${plan.dayInMonth}) instead of day ${activeCell.dayInMonth}.`
+            ? `\n${plan.monthName} has only ${plan.length} days that year, so the note goes to its last day (${plan.dayInMonth}) instead of day ${dayInMonth}.`
             : "");
 }
 
 function openSendDialog(note) {
     sendingNote = note;
-    fillEraSelect(sendEra);
 
-    // Start from the last year used (handy for a run of notes), else this one.
-    sendTargetYear = lastSendYear !== null ? lastSendYear : activeCell.year;
-    sendGregYear.value = sendTargetYear;
-    showEraYear(sendEra, sendEraYear, sendTargetYear);
+    sendMonth.replaceChildren(...MONTHS.map((name, index) => new Option(name, String(index))));
+
+    // Start on the note's own date.
+    sendDay.value = activeCell.dayInMonth;
+    sendMonth.value = String(activeCell.monthIndex);
+    sendYear.set(activeCell.year);
 
     document.getElementById("sendSummary").textContent =
         `${note.title ? `“${note.title}”` : "This note"} is on ` +
@@ -1728,33 +1915,15 @@ function openSendDialog(note) {
 
     updateSendPreview();
     sendDialog.showModal();
-    sendEraYear.focus();
-    sendEraYear.select();
+
+    // Changing only the year is the common case, so start there.
+    const eraYear = document.getElementById("sendEraYear");
+    eraYear.focus();
+    eraYear.select();
 }
 
-// The two ways of entering a year stay in step: editing one fills in the other.
-function onEraYearEdited() {
-    sendTargetYear = readEraYear(sendEra, sendEraYear);
-    sendGregYear.value = sendTargetYear === null ? "" : sendTargetYear;
-    updateSendPreview();
-}
-
-function onGregorianYearEdited() {
-    const year = parseInt(sendGregYear.value, 10);
-    sendTargetYear = Number.isInteger(year) && year >= 1 ? year : null;
-
-    if (sendTargetYear === null) {
-        sendEraYear.value = "";
-    } else {
-        showEraYear(sendEra, sendEraYear, sendTargetYear);
-    }
-
-    updateSendPreview();
-}
-
-sendEra.addEventListener("change", onEraYearEdited);
-sendEraYear.addEventListener("input", onEraYearEdited);
-sendGregYear.addEventListener("input", onGregorianYearEdited);
+sendDay.addEventListener("input", updateSendPreview);
+sendMonth.addEventListener("change", updateSendPreview);
 document.getElementById("sendCancel").addEventListener("click", () => sendDialog.close());
 
 sendForm.addEventListener("submit", async (event) => {
@@ -1764,7 +1933,6 @@ sendForm.addEventListener("submit", async (event) => {
         return;
     }
 
-    const year = sendTargetYear;
     const plan = sendPlan;
     const note = sendingNote;
 
@@ -1781,17 +1949,218 @@ sendForm.addEventListener("submit", async (event) => {
         return;
     }
 
-    lastSendYear = year;
     sendDialog.close();
 
     try {
-        await refreshNotes(); // the note leaves this day's list
+        await refreshNotes(); // the note leaves this day's list (if it moved elsewhere)
         showNotesInfo(
-            `Sent ${note.title ? `“${note.title}”` : "the note"} to ${describePlan(year, plan)}` +
-            (plan.clamped ? ` (day ${activeCell.dayInMonth} doesn't exist that year; used the month's last day).` : ".")
+            `Moved ${note.title ? `“${note.title}”` : "the note"} to ${describePlan(plan.year, plan)}` +
+            (plan.clamped ? ` (day ${plan.requestedDay} doesn't exist that month; used the last day).` : ".")
         );
     } catch (error) {
         showNotesError(error);
+    }
+});
+
+
+// ---- Move all notes from one year to another -------------------------
+//
+// Every note in the "from" year moves to the same month and day-in-month of
+// the "to" year (shortened where a month is shorter; left where the month has
+// no days). The server does the work in one step and can preview it first.
+
+const bulkDialog = document.getElementById("bulkDialog");
+const bulkForm = document.getElementById("bulkForm");
+const bulkPreview = document.getElementById("bulkPreview");
+const bulkResult = document.getElementById("bulkResult");
+const bulkSubmit = document.getElementById("bulkSubmit");
+const bulkShow = document.getElementById("bulkShow");
+
+let bulkTimer = null;
+let bulkRequest = 0;    // guards against out-of-order previews
+let bulkReady = false;  // true when a preview says there is something to move
+let bulkMovedTo = null; // the target year, once the move is done
+
+const bulkFrom = bindYearPicker(
+    document.getElementById("bulkFromEra"),
+    document.getElementById("bulkFromEraYear"),
+    document.getElementById("bulkFromGreg"),
+    () => scheduleBulkPreview()
+);
+const bulkTo = bindYearPicker(
+    document.getElementById("bulkToEra"),
+    document.getElementById("bulkToEraYear"),
+    document.getElementById("bulkToGreg"),
+    () => scheduleBulkPreview()
+);
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+function bulkMessage(text, { error = false } = {}) {
+    bulkPreview.replaceChildren();
+    bulkPreview.classList.toggle("error", error);
+
+    const p = document.createElement("p");
+    p.textContent = text;
+    bulkPreview.appendChild(p);
+}
+
+// Notes that need attention, as a short bulleted list.
+function bulkList(heading, items, describe) {
+    const intro = document.createElement("p");
+    intro.textContent = heading;
+    bulkPreview.appendChild(intro);
+
+    const list = document.createElement("ul");
+
+    for (const item of items.slice(0, 8)) {
+        const li = document.createElement("li");
+        li.textContent = describe(item);
+        list.appendChild(li);
+    }
+
+    if (items.length > 8) {
+        const more = document.createElement("li");
+        more.textContent = `…and ${items.length - 8} more`;
+        list.appendChild(more);
+    }
+
+    bulkPreview.appendChild(list);
+}
+
+function renderBulkPreview(result) {
+    bulkPreview.replaceChildren();
+    bulkPreview.classList.remove("error");
+
+    const from = yearName(result.from);
+    const to = yearName(result.to);
+
+    if (result.total === 0) {
+        bulkMessage(`There are no notes in ${from}.`);
+        return;
+    }
+
+    bulkMessage(`${plural(result.total, "note")} in ${from}. ${result.moving} will move to ${to}.`);
+
+    if (result.shortened.length) {
+        bulkList(
+            "Shortened to the month's last day (the month is shorter that year):",
+            result.shortened,
+            (n) => `${n.title} — ${n.monthName} ${n.dayInMonth} → day ${n.movedToDay}`
+        );
+    }
+
+    if (result.blocked.length) {
+        bulkList(
+            "Won't move (that month has no days in the new year); these stay where they are:",
+            result.blocked,
+            (n) => `${n.title} — ${n.monthName} ${n.dayInMonth}`
+        );
+    }
+
+    bulkReady = result.moving > 0;
+    bulkSubmit.disabled = !bulkReady;
+    bulkSubmit.textContent = bulkReady ? `Move ${plural(result.moving, "note")}` : "Move notes";
+}
+
+async function previewBulk() {
+    const request = ++bulkRequest;
+    const from = bulkFrom.get();
+    const to = bulkTo.get();
+
+    bulkReady = false;
+    bulkSubmit.disabled = true;
+    bulkSubmit.textContent = "Move notes";
+
+    if (from === null || to === null) {
+        bulkMessage("Enter both years.");
+        return;
+    }
+
+    if (from === to) {
+        bulkMessage("Choose two different years.");
+        return;
+    }
+
+    try {
+        const result = await api("POST", "/api/notes/move-year", { from, to, dryRun: true });
+
+        // Ignore the answer if the years changed while we waited.
+        if (request === bulkRequest) {
+            renderBulkPreview(result);
+        }
+    } catch (error) {
+        if (request === bulkRequest) {
+            bulkMessage(error.message, { error: true });
+        }
+    }
+}
+
+function scheduleBulkPreview() {
+    bulkResult.hidden = true;
+    bulkShow.hidden = true;
+    bulkMovedTo = null;
+
+    clearTimeout(bulkTimer);
+    bulkTimer = setTimeout(previewBulk, 200);
+}
+
+function openBulkDialog() {
+    const shown = parseInt(document.getElementById("yearInput").value, 10);
+    const year = Number.isInteger(shown) && shown >= 1 ? shown : 1;
+
+    // The year on screen is the usual source; pick the target.
+    bulkFrom.set(year);
+    bulkTo.set(year);
+    scheduleBulkPreview();
+    bulkDialog.showModal();
+
+    const eraYear = document.getElementById("bulkToEraYear");
+    eraYear.focus();
+    eraYear.select();
+}
+
+document.getElementById("bulkOpen").addEventListener("click", openBulkDialog);
+document.getElementById("bulkCancel").addEventListener("click", () => bulkDialog.close());
+
+bulkShow.addEventListener("click", () => {
+    if (bulkMovedTo !== null) {
+        document.getElementById("yearInput").value = bulkMovedTo;
+        generateCalendar();
+    }
+    bulkDialog.close();
+});
+
+bulkForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    if (!bulkReady) {
+        return;
+    }
+
+    const from = bulkFrom.get();
+    const to = bulkTo.get();
+    bulkSubmit.disabled = true;
+
+    try {
+        const result = await api("POST", "/api/notes/move-year", { from, to });
+
+        bulkReady = false;
+        bulkSubmit.textContent = "Moved";
+        bulkMovedTo = to;
+        bulkResult.hidden = false;
+        bulkResult.textContent =
+            `Moved ${plural(result.moving, "note")} from ${eraYearLabel(from)} to ${eraYearLabel(to)}.` +
+            (result.shortened.length ? ` ${plural(result.shortened.length, "note")} went to a shorter month's last day.` : "") +
+            (result.blocked.length ? ` ${plural(result.blocked.length, "note")} stayed put.` : "");
+
+        bulkShow.textContent = `Show ${eraYearLabel(to)}`;
+        bulkShow.hidden = false;
+        bulkPreview.replaceChildren();
+        generateCalendar(); // refresh the day badges behind the dialog
+    } catch (error) {
+        bulkSubmit.disabled = false;
+        bulkMessage(error.message, { error: true });
     }
 });
 
