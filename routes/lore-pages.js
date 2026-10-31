@@ -9,7 +9,8 @@ const eras = require("../lib/eras");
 const books = require("../lib/books");
 const { calendarUrl } = require("../lib/notes");
 const { HttpError, sendHtml, redirect, parseInteger } = require("../lib/http");
-const { esc, langVars, langBadge, layout, renderText, renderLoreHtml } = require("../lib/render");
+const appConfig = require("../lib/config");
+const { esc, ifEditing, langVars, langBadge, layout, renderText, renderLoreHtml } = require("../lib/render");
 const { stripLinkSyntax } = require("../lib/html");
 
 const SEARCH_LIMIT = 50;
@@ -44,7 +45,7 @@ function homePage(res) {
         </a>`
               )
               .join("")
-        : '<p class="muted">No categories yet. Add one in the <a href="/lore/editor">editor</a>.</p>';
+        : `<p class="muted">No categories yet.${ifEditing(' Add one in the <a href="/lore/editor">editor</a>.')}</p>`;
 
     sendHtml(
         res,
@@ -136,7 +137,7 @@ function eraNotesHtml(era) {
     return notesSectionHtml({
         heading: "Calendar notes",
         intro: `<p class="muted">Notes written in the <a href="/calendar/?year=${era.startYear}">calendar</a> for ${span}, in date order.
-        A year shared with a neighbouring era appears in both. Edit them in the calendar.</p>`,
+        A year shared with a neighbouring era appears in both.${ifEditing(" Edit them in the calendar.")}</p>`,
         emptyText: "No calendar notes fall within this era yet.",
         groups: era.groups,
         showBook: true
@@ -148,8 +149,8 @@ function bookNotesHtml(book) {
     return notesSectionHtml({
         heading: "Notes",
         intro: `<p class="muted">Notes added to this book from the <a href="/calendar/">calendar</a>, in date order.
-        Add, edit or reassign them there.</p>`,
-        emptyText: "No notes have been added to this book yet. Assign a note to it from the calendar.",
+        ${ifEditing("Add, edit or reassign them there.")}</p>`,
+        emptyText: `No notes have been added to this book yet.${ifEditing(" Assign a note to it from the calendar.")}`,
         groups: book.groups
     });
 }
@@ -236,7 +237,7 @@ function missingPage(res, category, slug) {
     <p class="crumbs"><a href="/lore">Lore</a> › <a href="${categoryUrl(category.slug)}">${esc(category.name)}</a></p>
     <h1>${esc(slug)}</h1>
     <p>There is no page called “${esc(slug)}” in ${esc(category.name)}.</p>
-    <p><a href="/lore/editor">Create it in the editor</a> or <a href="${categoryUrl(category.slug)}">browse ${esc(category.name)}</a>.</p>
+    <p>${ifEditing('<a href="/lore/editor">Create it in the editor</a> or ')}<a href="${categoryUrl(category.slug)}">${appConfig.PUBLIC ? "Browse" : "browse"} ${esc(category.name)}</a>.</p>
 </main>`
         })
     );

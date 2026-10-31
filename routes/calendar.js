@@ -4,13 +4,14 @@
 
 const { db } = require("../lib/db");
 const books = require("../lib/books");
+const { applyHidden } = require("../lib/visibility");
 const calendar = require("../lib/calendar");
 const { excerpt } = require("../lib/html");
 const { HttpError, sendJson, readJson, parseInteger } = require("../lib/http");
 
 // A note with the book it is assigned to (if any).
 const NOTE_SELECT = `
-    SELECT n.id, n.day, n.title, n.body, n.book_id,
+    SELECT n.id, n.day, n.title, n.body, n.book_id, n.hidden,
            p.title AS book_title, p.slug AS book_slug, c.slug AS book_category_slug
     FROM notes n
     LEFT JOIN lore_pages p ON p.id = n.book_id
@@ -171,6 +172,7 @@ module.exports = async function calendarRoutes(req, res, url) {
         const { title, body, bookId } = parseNote(data); // (day comes from above)
         const now = Date.now();
         const info = stmt.insert.run(day, title, body, bookId ?? null, now, now);
+        applyHidden("notes", info.lastInsertRowid, data);
         sendJson(res, 201, stmt.get.get(info.lastInsertRowid));
         return true;
     }
@@ -194,6 +196,7 @@ module.exports = async function calendarRoutes(req, res, url) {
                 Date.now(),
                 id
             );
+            applyHidden("notes", id, data);
             sendJson(res, 200, stmt.get.get(id));
             return true;
         }

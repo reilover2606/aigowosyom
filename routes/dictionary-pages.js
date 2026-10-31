@@ -13,7 +13,7 @@ const {
     redirect,
     parseInteger
 } = require("../lib/http");
-const {
+const { ifEditing,
     esc,
     entryUrl,
     languageUrl,
@@ -84,7 +84,7 @@ function homePage(res) {
         </a>`
               )
               .join("")
-        : `<p class="muted">No languages yet. Add one in the <a href="/dictionary/editor">editor</a>.</p>`;
+        : `<p class="muted">No languages yet.${ifEditing(' Add one in the <a href="/dictionary/editor">editor</a>.')}</p>`;
 
     sendHtml(
         res,
@@ -750,7 +750,7 @@ function familyPage(res) {
         .join("");
 
     const body = view.empty
-        ? '<p class="muted">No languages yet. Add one in the <a href="/dictionary/editor">editor</a>.</p>'
+        ? `<p class="muted">No languages yet.${ifEditing(' Add one in the <a href="/dictionary/editor">editor</a>.')}</p>`
         : `<p class="muted">Languages are linked through the ancestral forms recorded on their words.
         Ancestors sit above descendants. Each number is how many words are linked, and line thickness grows with it.
         Click a language to open it.</p>
@@ -758,7 +758,7 @@ function familyPage(res) {
     ${
         view.hasLinks
             ? ""
-            : '<p class="muted">No cross-language links yet. Add ancestor forms to words in the <a href="/dictionary/editor">editor</a> and the graph will fill in.</p>'
+            : `<p class="muted">No cross-language links yet.${ifEditing(' Add ancestor forms to words in the <a href="/dictionary/editor">editor</a> and the graph will fill in.')}</p>`
     }
     <div class="family-scroll">${view.svg}</div>
     ${
@@ -794,7 +794,7 @@ function editorPage(res) {
             title: "Dictionary editor",
             active: "editor",
             body: '<main id="editor" class="editor"><p class="muted">Loading…</p></main>',
-            scripts: ["/assets/dictionary/editor.js"]
+            scripts: ["/assets/ui.js", "/assets/dictionary/editor.js"]
         })
     );
 }

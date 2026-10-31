@@ -1,0 +1,33 @@
+.settings-page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.settings-section {
+    padding: 4px 20px 20px;
+    border-top: 4px solid var(--accent);
+}
+
+.settings-section h3 {
+    margin: 24px 0 6px;
+}
+
+.settings-page .row {
+    display: flex;
+    gap: 6px;
+}
+
+.settings-page .row input {
+    flex: 1;
+    min-width: 0;
+}
+
+.settings-page .muted {
+    color: var(--muted);
+}
+
+.settings-page code {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.9em;
+}

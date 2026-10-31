@@ -2,6 +2,7 @@
     "use strict";
 
     const root = document.getElementById("editor");
+    const { hiddenField, hiddenMark } = window.UI;
 
     const POS_SUGGESTIONS = [
         "noun", "verb", "adjective", "adverb", "pronoun", "numeral",
@@ -340,7 +341,7 @@
                     selected: language.id === state.languageId,
                     style: `color:${language.display_color}`
                 },
-                `■ ${language.name}${language.is_proto ? " (reconstructed)" : ""} — ${language.word_count}`)
+                `■ ${language.name}${language.is_proto ? " (reconstructed)" : ""} — ${language.word_count}${language.hidden ? " · not published" : ""}`)
             )
         );
 
@@ -363,7 +364,7 @@
                     class: item.id === (state.draft && state.draft.id) ? "selected" : "",
                     onclick: () => openWord(item.id)
                 },
-                h("span", { class: "hw conlang" }, shown(item.headword, language)),
+                h("span", { class: "hw conlang" }, shown(item.headword, language), item.hidden ? hiddenMark() : null),
                 h("span", { class: "sub" },
                     item.era_start_year != null ? [Icons.el("lock"), " built in · "] : "",
                     [item.pos, item.gloss].filter(Boolean).join(" · ")),
@@ -451,6 +452,7 @@
             pronunciation: "",
             sinographs: "",
             etymology: "",
+            hidden: false,
             senses: [""],
             variantOf: [],
             variantForms: [],
@@ -470,6 +472,7 @@
             pronunciation: word.pronunciation || "",
             sinographs: word.sinographs || "",
             etymology: word.etymology || "",
+            hidden: Boolean(word.hidden),
             senses: word.senses.length ? word.senses.slice() : [""],
             variantOf: word.variantOf.map((v) => ({
                 id: v.id,
@@ -839,6 +842,8 @@
                 h("div", { class: "placeholder-box" }, "Declension and conjugation tables will be added here later.")
             ),
 
+            hiddenField(draft.hidden, (value) => { draft.hidden = value; markDirty(); }).element,
+
             h("div", { class: "form-actions" },
                 h("button", { type: "button", class: "primary", onclick: save }, "Save"),
                 draft.id
@@ -895,6 +900,7 @@
             pronunciation: draft.pronunciation,
             sinographs: draft.sinographs,
             etymology: draft.etymology,
+            hidden: draft.hidden,
             senses: draft.senses,
             variantOf: draft.variantOf.filter((v) => v.id).map((v) => ({ id: v.id, kind: v.kind })),
             ancestors: draft.ancestors
@@ -960,6 +966,7 @@
         const protoInput = h("input", { type: "checkbox", checked: language ? Boolean(language.is_proto) : false });
         const genderInput = h("input", { type: "checkbox", checked: language ? Boolean(language.has_gender) : false });
         const notesInput = h("textarea", { value: language && language.notes ? language.notes : "" });
+        const hiddenInput = hiddenField(language && language.hidden);
 
         // null = no color assigned (shown as the default gray).
         let colorValue = language && language.color ? language.color : null;
@@ -1005,6 +1012,7 @@
                 h("label", {}, "Color", h("span", { class: "hint" }, " — used for this language's badges and pages")),
                 h("div", { class: "row" }, colorInput, clearColor, colorNote, h("span", { class: "grow" }), preview)),
             h("div", { class: "field" }, h("label", {}, "Notes"), notesInput),
+            hiddenInput.element,
             errorEl,
             h("div", { class: "form-actions" },
                 h("button", {
@@ -1016,7 +1024,8 @@
                             is_proto: protoInput.checked,
                             has_gender: genderInput.checked,
                             notes: notesInput.value,
-                            color: colorValue
+                            color: colorValue,
+                            hidden: hiddenInput.input.checked
                         };
 
                         try {
