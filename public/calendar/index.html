@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tanakōdeyam Yearly Calendar</title>
 <script src="/assets/theme.js"></script>
+<script src="/assets/icons.js"></script>
 <link rel="stylesheet" href="/assets/site.css">
 
 <style>
@@ -295,6 +296,12 @@
 		padding: 10px;
 		margin-bottom: 10px;
 		background: #fafafa;
+	}
+
+	/* The note a link pointed at. */
+	.note.note-target {
+		outline: 3px solid #d4a900;
+		outline-offset: 1px;
 	}
 
 	.note-title {
@@ -830,6 +837,7 @@ async function loadEraData() {
         }
 
         generateCalendar();
+        openLinkedNote();
     } catch (error) {
         console.error("Error loading era data:", error);
 
@@ -1617,7 +1625,7 @@ function buildNoteMenu(note) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "note-menu-button";
-    button.textContent = "☰";
+    button.append(Icons.el("menu"));
     button.title = "More actions";
     button.setAttribute("aria-label", "More actions for this note");
     button.setAttribute("aria-haspopup", "menu");
@@ -1679,6 +1687,7 @@ function renderNotes(notes) {
     for (const note of notes) {
         const div = document.createElement("div");
         div.className = "note";
+        div.dataset.noteId = note.id;
         div.appendChild(buildNoteMenu(note));
 
         if (note.title) {
@@ -1697,7 +1706,7 @@ function renderNotes(notes) {
         if (note.book_id) {
             const book = document.createElement("div");
             book.className = "note-book";
-            book.append("📖 ");
+            book.append(Icons.el("book"), " ");
 
             const link = document.createElement("a");
             link.href = `/lore/${encodeURIComponent(note.book_category_slug)}/${encodeURIComponent(note.book_slug)}`;
@@ -2183,6 +2192,7 @@ async function refreshNotes() {
 
     renderNotes(notes);
     setBadge(day, notes.length);
+    showLinkedNote();
 }
 
 // Fills the "Book" dropdown from the lore. Keeps the current choice if it
@@ -2288,6 +2298,37 @@ document.getElementById("calendar").addEventListener("click", (event) => {
     }
 });
 
+
+// /calendar/?year=…&day=…&note=… (links from search and the lore) opens that
+// day's notes and highlights the note.
+let linkedNoteId = null;
+
+function openLinkedNote() {
+    const params = new URLSearchParams(location.search);
+    const day = parseInt(params.get("day"), 10);
+    const note = parseInt(params.get("note"), 10);
+    const cell = Number.isInteger(day) ? document.querySelector(`#calendar .day[data-day="${day}"]`) : null;
+
+    if (cell) {
+        linkedNoteId = Number.isInteger(note) ? note : null;
+        openNotes(cell);
+    }
+}
+
+// After a day's notes are drawn: mark the linked note, once, and bring it into view.
+function showLinkedNote() {
+    if (linkedNoteId === null) {
+        return;
+    }
+
+    const target = notesList.querySelector(`.note[data-note-id="${linkedNoteId}"]`);
+    linkedNoteId = null;
+
+    if (target) {
+        target.classList.add("note-target");
+        target.scrollIntoView({ block: "nearest" });
+    }
+}
 
 // Generate the initial calendar on page load.
 loadEraData();

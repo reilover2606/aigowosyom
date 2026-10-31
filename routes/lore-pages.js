@@ -2,10 +2,12 @@
 
 // Server-rendered, read-only lore pages (a small encyclopedia).
 
+const Icons = require("../public/assets/icons.js");
 const lore = require("../lib/lore");
 const dict = require("../lib/dictionary");
 const eras = require("../lib/eras");
 const books = require("../lib/books");
+const { calendarUrl } = require("../lib/notes");
 const { HttpError, sendHtml, redirect, parseInteger } = require("../lib/http");
 const { esc, langVars, langBadge, layout, renderText, renderLoreHtml } = require("../lib/render");
 const { stripLinkSyntax } = require("../lib/html");
@@ -54,7 +56,7 @@ function homePage(res) {
     <p class="muted">Search above, or choose a category to browse.</p>
     ${
         total
-            ? '<p><a class="button-link" href="/lore/random">🎲 Random page</a></p>'
+            ? `<p><a class="button-link" href="/lore/random">${Icons.svg("dice")} Random page</a></p>`
             : ""
     }
     <div class="language-grid">${cards}</div>
@@ -112,10 +114,10 @@ function notesSectionHtml({ heading, intro, emptyText, groups, showBook = false 
         <ul class="era-note-list">${group.notes
             .map(
                 (note) => `<li>
-            <div class="era-note-date"><a${note.monthIsNative ? ' class="conlang"' : ""} href="/calendar/?year=${group.year}">${esc(note.monthLabel)} ${note.dayInMonth}</a> <span class="muted">· ${esc(note.gregorian)}</span></div>
+            <div class="era-note-date"><a${note.monthIsNative ? ' class="conlang"' : ""} href="${esc(calendarUrl(group.year, note))}">${esc(note.monthLabel)} ${note.dayInMonth}</a> <span class="muted">· ${esc(note.gregorian)}</span></div>
             ${note.title ? `<div class="era-note-title">${esc(note.title)}</div>` : ""}
             <div class="era-note-body">${esc(note.body).replace(/\r?\n/g, "<br>")}</div>
-            ${showBook && note.book ? `<div class="era-note-book">📖 <a href="${esc(note.book.url)}">${esc(note.book.title)}</a></div>` : ""}
+            ${showBook && note.book ? `<div class="era-note-book">${Icons.svg("book")} <a href="${esc(note.book.url)}">${esc(note.book.title)}</a></div>` : ""}
         </li>`
             )
             .join("")}</ul>`
@@ -191,7 +193,7 @@ function articlePage(res, category, page) {
                     }</li>`
             )
             .join("")}</ul>
-        <p><a class="button-link small" href="/lore/random?category=${encodeURIComponent(category.slug)}&amp;from=${encodeURIComponent(page.slug)}">🎲 Random ${esc(category.name)} page</a></p>
+        <p><a class="button-link small" href="/lore/random?category=${encodeURIComponent(category.slug)}&amp;from=${encodeURIComponent(page.slug)}">${Icons.svg("dice")} Random ${esc(category.name)} page</a></p>
     </aside>`;
 
     sendHtml(

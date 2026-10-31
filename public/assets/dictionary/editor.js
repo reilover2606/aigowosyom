@@ -365,7 +365,7 @@
                 },
                 h("span", { class: "hw conlang" }, shown(item.headword, language)),
                 h("span", { class: "sub" },
-                    item.era_start_year != null ? "🔒 built in · " : "",
+                    item.era_start_year != null ? [Icons.el("lock"), " built in · "] : "",
                     [item.pos, item.gloss].filter(Boolean).join(" · ")),
                 state.sort === "updated"
                     ? h("span", { class: "sub when" }, `updated ${formatWhen(item.updated_at)}`)
@@ -565,7 +565,7 @@
     }
 
     function removeButton(onclick, label = "Remove") {
-        return h("button", { type: "button", class: "small-button danger", title: label, onclick }, "✕");
+        return h("button", { type: "button", class: "small-button danger", title: label, onclick }, Icons.el("close"));
     }
 
     function renderForm() {
@@ -845,7 +845,7 @@
                     ? h("a", {
                         href: `/dictionary/${encodeURIComponent(language.slug)}/${encodeURIComponent(draft.headword)}`,
                         target: "_blank"
-                    }, "View in dictionary ↗")
+                    }, "View in dictionary ", Icons.el("external"))
                     : null,
                 statusEl,
                 h("span", { class: "spacer" }),
@@ -872,13 +872,13 @@
             const lorePage = draft.lorePages[0];
             title.after(
                 h("p", { class: "hint-block" },
-                    "🔒 Built in: this entry is generated from the calendar's eras. Only the etymology notes can be edited here; ",
+                    Icons.el("lock"), " Built in: this entry is generated from the calendar's eras. Only the etymology notes can be edited here; ",
                     lorePage
                         ? ["the rest comes from its lore page: ",
                             h("a", {
                                 href: `/lore/${encodeURIComponent(lorePage.category_slug)}/${encodeURIComponent(lorePage.slug)}`,
                                 target: "_blank"
-                            }, `${lorePage.category_name} › ${lorePage.title} ↗`)]
+                            }, `${lorePage.category_name} › ${lorePage.title} `, Icons.el("external"))]
                         : "the rest comes from eras.json.")
             );
         }

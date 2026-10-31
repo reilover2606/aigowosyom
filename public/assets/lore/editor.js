@@ -437,7 +437,7 @@
                     table.remove();
                 }
             }), { extraClass: "wide" }),
-            button("✕ table", "Delete the whole table", tableAction((cell) => cell.closest("table").remove()), { extraClass: "wide" })
+            button([Icons.el("close"), " table"], "Delete the whole table", tableAction((cell) => cell.closest("table").remove()), { extraClass: "wide" })
         ];
         tableTools.append(...tableButtons);
 
@@ -451,19 +451,19 @@
             h("span", { class: "tool-group" },
                 command("• List", "Bulleted list", "insertUnorderedList", null, "wide"),
                 command("1. List", "Numbered list", "insertOrderedList", null, "wide"),
-                command("⇥", "Indent (nest a list item)", "indent"),
-                command("⇤", "Outdent", "outdent")),
+                command(Icons.el("indent"), "Indent (nest a list item)", "indent"),
+                command(Icons.el("outdent"), "Outdent", "outdent")),
             h("span", { class: "tool-group" },
                 button("Link", "Add a web link (Ctrl+K)", insertLink, { extraClass: "wide" }),
                 command("Unlink", "Remove link", "unlink", null, "wide"),
                 button("[[ ]]", "Link to a lore page, category or dictionary word", insertWikiLink, { extraClass: "wide" })),
             h("span", { class: "tool-group" },
-                command("―", "Horizontal rule", "insertHorizontalRule"),
+                command(Icons.el("rule"), "Horizontal rule", "insertHorizontalRule"),
                 button("Table", "Insert a table", insertTable, { extraClass: "wide" }),
                 command("Clear", "Clear formatting", "removeFormat", null, "wide")),
             h("span", { class: "tool-group" },
-                command("↶", "Undo", "undo"),
-                command("↷", "Redo", "redo")),
+                command(Icons.el("undo"), "Undo", "undo"),
+                command(Icons.el("redo"), "Redo", "redo")),
             tableTools
         );
 
@@ -962,7 +962,7 @@
                     ? h("a", {
                         href: `/lore/${encodeURIComponent(draftCategory.slug)}/${encodeURIComponent(draft.slug)}`,
                         target: "_blank"
-                    }, "View page ↗")
+                    }, "View page ", Icons.el("external"))
                     : null,
                 statusEl,
                 h("span", { class: "spacer" }),
@@ -991,14 +991,14 @@
                                 h("div", { class: "era-note-date" },
                                     h("a", {
                                         class: note.monthIsNative ? "conlang" : undefined,
-                                        href: `/calendar/?year=${group.year}`,
+                                        href: `/calendar/?year=${group.year}&day=${note.day}&note=${note.id}`,
                                         target: "_blank"
                                     }, `${note.monthLabel} ${note.dayInMonth}`),
                                     h("span", { class: "muted" }, ` · ${note.gregorian}`)),
                                 note.title ? h("div", { class: "era-note-title" }, note.title) : null,
                                 h("div", { class: "era-note-body" }, note.body),
                                 showBook && note.book
-                                    ? h("div", { class: "era-note-book" }, "📖 ",
+                                    ? h("div", { class: "era-note-book" }, Icons.el("book"), " ",
                                         h("a", { href: note.book.url, target: "_blank" }, note.book.title))
                                     : null)))
                 ])
