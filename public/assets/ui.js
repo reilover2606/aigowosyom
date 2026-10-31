@@ -85,5 +85,28 @@
         return new Date(timestamp).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
     }
 
-    window.UI = { DEFAULT_COLOR, h, api, slugify, inkFor, badge, formatWhen };
+    // The "Do not publish" checkbox every editor form carries. Things marked
+    // with it are left out when the database is published (see Settings).
+    function hiddenField(checked, onchange) {
+        const input = h("input", {
+            type: "checkbox",
+            id: `hidden-${Math.random().toString(36).slice(2)}`,
+            checked: Boolean(checked),
+            onchange: () => onchange && onchange(input.checked)
+        });
+
+        const element = h("div", { class: "field check hidden-field" },
+            input,
+            h("label", { for: input.id }, "Do not publish",
+                h("span", { class: "hint" }, " — leave this out of the public site (it stays here as usual)")));
+
+        return { element, input };
+    }
+
+    // The small marker shown in lists next to something that isn't published.
+    function hiddenMark() {
+        return h("span", { class: "hidden-mark", title: "Marked “Do not publish”" }, window.Icons.el("eyeoff"));
+    }
+
+    window.UI = { DEFAULT_COLOR, h, api, slugify, inkFor, badge, formatWhen, hiddenField, hiddenMark };
 })();

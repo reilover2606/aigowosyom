@@ -1,7 +1,7 @@
 (() => {
     "use strict";
 
-    const { h, api, slugify, inkFor, badge, formatWhen, DEFAULT_COLOR } = window.UI;
+    const { h, api, slugify, inkFor, badge, formatWhen, hiddenField, hiddenMark, DEFAULT_COLOR } = window.UI;
     const root = document.getElementById("editor");
 
     const state = {
@@ -694,7 +694,7 @@
                     value: c.id,
                     selected: c.id === state.categoryId,
                     style: `color:${c.display_color}`
-                }, `■ ${c.name} — ${c.page_count}`)
+                }, `■ ${c.name} — ${c.page_count}${c.hidden ? " · not published" : ""}`)
             )
         );
 
@@ -717,7 +717,7 @@
                     class: item.id === (state.draft && state.draft.id) ? "selected" : "",
                     onclick: () => openPage(item.id)
                 },
-                h("span", { class: "hw" }, item.title),
+                h("span", { class: "hw" }, item.title, item.hidden ? hiddenMark() : null),
                 h("span", { class: "sub" }, item.excerpt || "(empty)"),
                 state.sort === "updated" ? h("span", { class: "sub when" }, `updated ${formatWhen(item.updated_at)}`) : null)
             )
@@ -798,6 +798,7 @@
             categoryId: state.categoryId,
             body: "",
             isEra: false,
+            hidden: false,
             era: null,
             book: null
         };
@@ -812,6 +813,7 @@
             categoryId: page.category_id,
             body: page.body,
             isEra: Boolean(page.is_era),
+            hidden: Boolean(page.hidden),
             era: page.era || null,
             book: page.book || null
         };
@@ -953,6 +955,8 @@
                 editor.element
             ),
 
+            hiddenField(draft.hidden, (value) => { draft.hidden = value; markDirty(); }).element,
+
             ...(draft.era ? [eraNotesPanel(draft.era)] : []),
             ...(draft.book ? [bookNotesPanel(draft.book)] : []),
 
@@ -1036,6 +1040,7 @@
             category_id: draft.categoryId,
             title: draft.title,
             slug: draft.slug,
+            hidden: draft.hidden,
             body: editor.getHtml()
         };
 
@@ -1109,6 +1114,7 @@
             oninput: () => { slugTouched = true; }
         });
         const descriptionInput = h("textarea", { value: category && category.description ? category.description : "" });
+        const hiddenInput = hiddenField(category && category.hidden);
         const errorEl = h("div", { class: "status error" });
 
         // null = no color assigned (shown as the default gray).
@@ -1157,6 +1163,7 @@
             h("div", { class: "field" },
                 h("label", {}, "Description", h("span", { class: "hint" }, " — shown at the top of the category page")),
                 descriptionInput),
+            hiddenInput.element,
             errorEl,
             h("div", { class: "form-actions" },
                 h("button", {
@@ -1167,7 +1174,8 @@
                             name: nameInput.value,
                             slug: slugInput.value,
                             color: colorValue,
-                            description: descriptionInput.value
+                            description: descriptionInput.value,
+                            hidden: hiddenInput.input.checked
                         };
 
                         try {

@@ -80,6 +80,31 @@ Everything lives in one SQLite file, `data/worldbuilding.db` (created on first r
 - **Fonts:** language words are Helvetica (sans-serif) and everything else is Times New Roman (serif), set in `--font-sans` / `--font-serif` in `public/assets/site.css`. Other platforms fall back to Arial / Times-compatible fonts, with Noto and Japanese fonts behind them for the sinographs. This holds in every theme.
 - **Site-wide search:** a search box under the section cards on the home page searches the dictionary (headwords, sinographs, definitions), the lore (titles and text) and the calendar's notes (titles and text), ignoring case and diacritics. Live suggestions show a mixed list as you type (arrow keys and Enter work); submitting opens `/search?q=…`, which groups results by section with a "See all →" link into each section's own search. Calendar-note hits show their era and year (e.g. "Kemairyom 10"), month and Gregorian date, and link to that year in the calendar. Notes are indexed by an FTS5 table kept in step with the `notes` table by database triggers.
 
+## Public site and publishing
+
+The program has two modes, set with environment variables (`lib/config.js`):
+
+- **Editor** (the default): everything, read-write. This is your local copy. It also has a **Settings** page (the link in the slim top bar) with the Publish button.
+- **Public** (`MODE=public`): read-only. There are no Editor tabs, the editor pages and scripts return 404, every request that isn't a plain read is refused (405), and the calendar shows notes without any way to add, edit, move or delete them. It never writes to its database; it only replaces it when you publish.
+
+Run the two on separate machines and push your database from the editor to the public site. There are no accounts or logins.
+
+**Do not publish.** Every language, dictionary entry, lore category, lore page and calendar note has a **Do not publish** checkbox (off by default, so everything is published unless you mark it). Marked items stay here as normal (lists show a small crossed-out eye, or "not published" beside a language or category) and are left out of what is published. Marking a language or category leaves out the words or pages inside it, a note whose book is not published stays but is no longer assigned to that book, and links to something left out simply show as missing links. The Settings page lists exactly what the next publish will leave out. The hidden rows are deleted from a copy of the database *before it leaves this machine*, the search indexes are merged and the file is vacuumed, so the hidden text isn't in what is sent. (A visible page's own text is sent as written: if it mentions a hidden page by name, that name goes with it.)
+
+**Setting it up**
+
+1. On the public machine, start the program with a secret token, behind HTTPS (a reverse proxy such as Caddy or nginx; the program listens on `127.0.0.1` unless you set `HOST`):
+
+   ```bash
+   MODE=public PORT=3000 PUBLISH_TOKEN=<a long random string> node server.js
+   ```
+
+   A public instance runs under a small built-in supervisor: after a published database is swapped in, it restarts itself on the new data (a moment's downtime). It also works under systemd or Docker. `DATA_DIR` changes where its database lives (default `./data`).
+2. Here, open **Settings**, enter the public site's address (`https://…`) and the same token (the **Generate** button makes a random one), and save. They are kept in `data/settings.json` on this machine only (not in git).
+3. Press **Publish now**. Publishing again replaces what is online.
+
+**How an upload is protected.** The token is never sent: the upload is signed with HMAC-SHA256 over a timestamp and the body, and the public side rejects bad signatures, timestamps more than five minutes off (so a captured upload can't be replayed), uploads that aren't healthy databases (an integrity check and a required-tables check), and oversized files. The new database is written beside the live one and swapped in; the previous one is kept as `worldbuilding.db.previous`. `eras.json` goes up with the database so the calendar and the era pages stay in step. Publishing needs `https://`, except to this machine itself. Code: `lib/publish.js`, `routes/settings.js`, `lib/visibility.js`.
+
 ## Layout
 
 ```

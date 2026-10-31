@@ -101,3 +101,19 @@ h1 {
         display: none;
     }
 }
+
+/* A public (read-only) site: nothing for editing. See lib/config.js. */
+html[data-site-mode="public"] .editor-only {
+    display: none !important;
+}
+
+/* Marks something in an editor list as "Do not publish". */
+.hidden-mark {
+    margin-left: 6px;
+    color: var(--muted, #72777d);
+    font-weight: normal;
+}
+
+.field.check.hidden-field {
+    margin-top: 12px;
+}

@@ -599,6 +599,26 @@
 		resize: vertical;
 	}
 
+	.note-hidden-field {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin: 4px 0 8px;
+		font-size: 0.9em;
+		color: #666;
+	}
+
+	.note-hidden-field input {
+		width: auto;
+		margin: 0;
+	}
+
+	.note-unpublished {
+		margin-top: 4px;
+		font-size: 0.85em;
+		color: #888;
+	}
+
 	.note-form-buttons {
 		display: flex;
 		gap: 6px;
@@ -635,6 +655,7 @@
     <a href="/calendar/" aria-current="page">Calendar</a>
     <a href="/lore">Lore</a>
     <a href="/dictionary">Dictionary</a>
+    <a class="editor-only" href="/settings">Settings</a>
     <label class="theme-switch"><span>Theme</span><select id="themeSelect" aria-label="Theme"></select></label>
 </nav>
 
@@ -650,7 +671,7 @@
     <input type="number" id="yearInput" value="2026" min="1">
     <button onclick="generateCalendar()">Jump</button>
     <button onclick="window.print()">Print</button>
-    <button type="button" id="bulkOpen" title="Move every note from one year to another">Move a year's notes…</button>
+    <button type="button" id="bulkOpen" class="editor-only" title="Move every note from one year to another">Move a year's notes…</button>
 </div>
 
 <div class="controls era-controls">
@@ -671,7 +692,7 @@
     <h2 id="notesDialogTitle"></h2>
     <div id="notesDialogSub"></div>
     <div id="notesList"></div>
-    <form id="noteForm" class="note-form">
+    <form id="noteForm" class="note-form editor-only">
         <input type="text" id="noteTitleInput" placeholder="Title (optional)" maxlength="200">
         <textarea id="noteBodyInput" placeholder="Note" required></textarea>
         <label class="note-book-field">
@@ -679,6 +700,9 @@
             <select id="noteBookInput" aria-label="Assign this note to a book">
                 <option value="">— none —</option>
             </select>
+        </label>
+        <label class="note-hidden-field" title="Leave this note out of the public site (it stays here as usual)">
+            <input type="checkbox" id="noteHiddenInput"> Do not publish
         </label>
         <div class="note-form-buttons">
             <button type="submit" id="noteSubmit">Add note</button>
@@ -1520,6 +1544,10 @@ const noteForm = document.getElementById("noteForm");
 const noteTitleInput = document.getElementById("noteTitleInput");
 const noteBodyInput = document.getElementById("noteBodyInput");
 const noteBookInput = document.getElementById("noteBookInput");
+const noteHiddenInput = document.getElementById("noteHiddenInput");
+
+// A public site is read-only: no way to add, edit, move or delete notes.
+const PUBLIC_SITE = document.documentElement.dataset.siteMode === "public";
 const noteSubmit = document.getElementById("noteSubmit");
 const noteCancelEdit = document.getElementById("noteCancelEdit");
 
@@ -1603,6 +1631,7 @@ function resetNoteForm() {
     noteTitleInput.value = "";
     noteBodyInput.value = "";
     noteBookInput.value = "";
+    noteHiddenInput.checked = false;
     noteSubmit.textContent = "Add note";
     noteCancelEdit.hidden = true;
 }
@@ -1688,7 +1717,9 @@ function renderNotes(notes) {
         const div = document.createElement("div");
         div.className = "note";
         div.dataset.noteId = note.id;
-        div.appendChild(buildNoteMenu(note));
+        if (!PUBLIC_SITE) {
+            div.appendChild(buildNoteMenu(note));
+        }
 
         if (note.title) {
             const title = document.createElement("div");
@@ -1701,6 +1732,13 @@ function renderNotes(notes) {
         body.className = "note-body";
         body.textContent = note.body;
         div.appendChild(body);
+
+        if (note.hidden) {
+            const flag = document.createElement("div");
+            flag.className = "note-unpublished";
+            flag.append(Icons.el("eyeoff"), " Not published");
+            div.appendChild(flag);
+        }
 
         // The book this note is assigned to, linking to its page in the lore.
         if (note.book_id) {
@@ -1726,6 +1764,7 @@ function renderNotes(notes) {
             noteTitleInput.value = note.title || "";
             noteBodyInput.value = note.body;
             noteBookInput.value = note.book_id ? String(note.book_id) : "";
+            noteHiddenInput.checked = Boolean(note.hidden);
             noteSubmit.textContent = "Save changes";
             noteCancelEdit.hidden = false;
             noteBodyInput.focus();
@@ -1754,7 +1793,9 @@ function renderNotes(notes) {
 
         actions.appendChild(editButton);
         actions.appendChild(deleteButton);
-        div.appendChild(actions);
+        if (!PUBLIC_SITE) {
+            div.appendChild(actions);
+        }
 
         notesList.appendChild(div);
     }
@@ -2254,7 +2295,8 @@ noteForm.addEventListener("submit", async (event) => {
     const data = {
         title: noteTitleInput.value,
         body: noteBodyInput.value,
-        book_id: noteBookInput.value ? Number(noteBookInput.value) : null
+        book_id: noteBookInput.value ? Number(noteBookInput.value) : null,
+        hidden: noteHiddenInput.checked
     };
 
     try {
