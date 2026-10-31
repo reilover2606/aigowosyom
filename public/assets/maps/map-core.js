@@ -317,25 +317,37 @@
         const selectedIs = (type, id) => view.selected && view.selected.type === type && view.selected.id === id;
 
         // ---- styles ----
-        const seaStyle = () => new ol.style.Style({ fill: new ol.style.Fill({ color: colors.sea }) });
+        // Styles are made once per look and reused (a pan or zoom asks for a style per shape per frame).
+        const styleCache = new Map();
+        const cached = (key, make) => {
+            let style = styleCache.get(key);
+            if (!style) {
+                if (styleCache.size > 3000) {
+                    styleCache.clear();
+                }
+                style = make();
+                styleCache.set(key, style);
+            }
+            return style;
+        };
+
+        const seaStyle = () => cached(`sea|${colors.sea}`, () => new ol.style.Style({ fill: new ol.style.Fill({ color: colors.sea }) }));
         // While a tracer image is showing (editor), land and lakes let it show through.
         const fillOf = (color) => (view.tracing ? hexAlpha(color, 0.4) : color);
-        const landStyle = (feature) => new ol.style.Style({
-            fill: new ol.style.Fill({ color: fillOf(colors.land) }),
-            stroke: new ol.style.Stroke({
-                color: selectedIs("feature", feature.get("id")) ? colors.accent : colors.coast,
-                width: selectedIs("feature", feature.get("id")) ? 3 : 1.5,
-                lineJoin: "round"
-            })
-        });
-        const lakeStyle = (feature) => new ol.style.Style({
-            fill: new ol.style.Fill({ color: fillOf(colors.lake) }),
-            stroke: new ol.style.Stroke({
-                color: selectedIs("feature", feature.get("id")) ? colors.accent : colors.coast,
-                width: selectedIs("feature", feature.get("id")) ? 3 : 1,
-                lineJoin: "round"
-            })
-        });
+        const landStyle = (feature) => {
+            const chosen = selectedIs("feature", feature.get("id"));
+            return cached(`land|${fillOf(colors.land)}|${chosen}|${colors.accent}|${colors.coast}`, () => new ol.style.Style({
+                fill: new ol.style.Fill({ color: fillOf(colors.land) }),
+                stroke: new ol.style.Stroke({ color: chosen ? colors.accent : colors.coast, width: chosen ? 3 : 1.5, lineJoin: "round" })
+            }));
+        };
+        const lakeStyle = (feature) => {
+            const chosen = selectedIs("feature", feature.get("id"));
+            return cached(`lake|${fillOf(colors.lake)}|${chosen}|${colors.accent}|${colors.coast}`, () => new ol.style.Style({
+                fill: new ol.style.Fill({ color: fillOf(colors.lake) }),
+                stroke: new ol.style.Stroke({ color: chosen ? colors.accent : colors.coast, width: chosen ? 3 : 1, lineJoin: "round" })
+            }));
+        };
         // ---- names (see nameOpacity) ----
         const nameStyles = new Map();
         function nameText({ text, px, alpha, weight = "bold", family, color, halo, zIndex = 0, placement, offsetY = 0, star = false }) {
@@ -422,26 +434,34 @@
                 ? nameText({ text: shown, px, alpha, weight: "italic", family: colors.serif, color: colors.water, halo: colors.halo, zIndex: sea ? 1 : 2 })
                 : null;
         };
-        const stateStyle = (feature) => new ol.style.Style({
-            fill: new ol.style.Fill({ color: hexAlpha(feature.get("color"), view.marked.has(feature.get("id")) ? 0.42 : 0.2) })
-        });
+        const stateStyle = (feature) => {
+            const marked = view.marked.has(feature.get("id"));
+            return cached(`state|${feature.get("color")}|${marked}`, () => new ol.style.Style({
+                fill: new ol.style.Fill({ color: hexAlpha(feature.get("color"), marked ? 0.42 : 0.2) })
+            }));
+        };
         // The outline of a superstate, heavier than the dots between its clients.
-        const outlineStyle = (feature) => new ol.style.Style({
-            stroke: new ol.style.Stroke({
-                color: hexAlpha(feature.get("color"), 0.95),
-                width: selectedIs("state", feature.get("groupId")) ? 6 : Math.max(2.5, 4.5 - feature.get("depth") * 1.5),
-                lineJoin: "round",
-                lineCap: "round"
-            })
-        });
-        const borderStyle = () => new ol.style.Style({
+        const outlineStyle = (feature) => {
+            const width = selectedIs("state", feature.get("groupId")) ? 6 : Math.max(2.5, 4.5 - feature.get("depth") * 1.5);
+            return cached(`outline|${feature.get("color")}|${width}`, () => new ol.style.Style({
+                stroke: new ol.style.Stroke({ color: hexAlpha(feature.get("color"), 0.95), width, lineJoin: "round", lineCap: "round" })
+            }));
+        };
+        // The dotted borders are the costliest thing to draw, so while the map is being moved
+        // they are drawn as a plain thin line and dotted again once it stops.
+        let moving = false;
+        const borderStyle = () => moving
+            ? cached(`border-plain|${colors.border}`, () => new ol.style.Style({
+                stroke: new ol.style.Stroke({ color: withOpacity(colors.border, 0.7), width: 1 })
+            }))
+            : cached(`border|${colors.border}`, () => new ol.style.Style({
             stroke: new ol.style.Stroke({
                 color: colors.border,
                 width: 2,
                 lineDash: [0.5, 6], // round dots
                 lineCap: "round"
             })
-        });
+        }));
         const labelStyle = (feature, resolution) => {
             const group = feature.get("group");
             const text = group ? feature.get("name").toUpperCase() : feature.get("name");
@@ -480,7 +500,8 @@
                 alpha = 1;
             }
             const fade = Math.round(alpha * 10) / 10;
-            return new ol.style.Style({
+            const name = fade > 0 ? feature.get("name") : "";
+            return cached(`point|${chosen}|${size}|${fade}|${name}|${colors.accent}|${colors.point}|${colors.label}|${colors.halo}|${colors.serif}`, () => new ol.style.Style({
                 image: new ol.style.Circle({
                     radius: chosen ? 8 : 5.5,
                     fill: new ol.style.Fill({ color: chosen ? colors.accent : colors.point }),
@@ -496,13 +517,22 @@
                         overflow: false
                     })
                     : undefined
-            });
+            }));
         };
 
         const byRank = (a, b) => (b.get("rank") || 0) - (a.get("rank") || 0);
 
         // Bottom to top: sea, tracer images (z-index 1), land, lakes, rivers, states, borders, names, places.
-        const layer = (source, style, zIndex, extra = {}) => new ol.layer.Vector({ source, style, zIndex, ...extra });
+        // Shapes keep being drawn while the map is dragged or zoomed, with a wide margin around the
+        // screen, so new ground appears as you pan instead of after you let go. Names and places
+        // (which are laid out against each other, the costly part) keep their last layout meanwhile.
+        const layer = (source, style, zIndex, extra = {}) => new ol.layer.Vector({
+            source, style, zIndex,
+            renderBuffer: 400,
+            updateWhileInteracting: !extra.declutter,
+            updateWhileAnimating: !extra.declutter,
+            ...extra
+        });
         view.layers = {
             sea: layer(sources.sea, seaStyle, 0),
             land: layer(sources.land, landStyle, 2),
@@ -552,6 +582,14 @@
                 ])
         });
         view.ol = olMap;
+        olMap.on("movestart", () => {
+            moving = true;
+            view.layers.borders.changed();
+        });
+        olMap.on("moveend", () => {
+            moving = false;
+            view.layers.borders.changed();
+        });
         view.olView = olView;
         view.projection = projection;
 
