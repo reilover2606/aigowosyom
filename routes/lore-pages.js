@@ -129,7 +129,7 @@ function notesSectionHtml({ heading, intro, emptyText, groups, showBook = false 
     return `<section class="era-notes"><h2>${esc(heading)}</h2>${intro}${body}</section>`;
 }
 
-const STATUS_LABEL = { capital: "capital state", province: "province", vassal: "vassal", march: "march", territory: "territory" };
+const STATUS_LABEL = { capital: "capital state", province: "province", region: "region", vassal: "vassal", march: "march", territory: "territory" };
 
 // The clients of a superstate, as a nested list (generated from the map, so it
 // always agrees with it), each with its status.

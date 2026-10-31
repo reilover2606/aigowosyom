@@ -477,3 +477,91 @@ dialog.choosing .actions {
     justify-content: flex-end;
     margin-top: 12px;
 }
+
+/* ---- The viewer's side panel scrolls by itself, so a long list of states doesn't stretch the page ---- */
+
+.map-layout .map-info {
+    position: sticky;
+    top: 8px;
+    max-height: min(72vh, 760px);
+    overflow-y: auto;
+}
+
+/* ---- Full screen: the map and its side column (right in the viewer, left in the editor) ---- */
+
+.map-view .map-fullscreen {
+    position: absolute;
+    top: 74px;
+    left: 10px;
+    width: 34px;
+    height: 34px;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.map-layout:fullscreen,
+.map-editor:fullscreen {
+    box-sizing: border-box;
+    padding: 8px;
+    background: var(--bg, #f6f6f4);
+    color: var(--text, #202122);
+    overflow: auto;
+}
+
+.map-layout:fullscreen {
+    height: 100vh;
+    align-items: stretch;
+}
+
+.map-layout:fullscreen .map-view {
+    height: calc(100vh - 16px);
+}
+
+.map-editor:fullscreen .map-view {
+    height: calc(100vh - 56px); /* the status line sits below the map */
+}
+
+.map-layout:fullscreen .map-info {
+    max-height: calc(100vh - 16px);
+}
+
+.map-editor:fullscreen .map-side {
+    top: 0;
+    max-height: calc(100vh - 16px);
+}
+
+.map-editor:fullscreen .map-main {
+    top: 0;
+}
+
+/* ---- Folding the clients of a superstate away ---- */
+
+.tree-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.tree-row > button:not(.fold) {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.states-tree .tree-row button.fold,
+.map-info .tree-row button.fold {
+    flex: 0 0 auto;
+    width: 24px;
+    margin: 1px 0;
+    padding: 3px 0;
+    text-align: center;
+}
+
+.fold-spacer {
+    flex: 0 0 24px;
+}
+
+details.clients > summary {
+    cursor: pointer;
+    margin: 8px 0 4px;
+}

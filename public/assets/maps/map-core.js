@@ -292,7 +292,7 @@
         () => !document.querySelector("dialog[open]:not(.choosing)")
     );
 
-    function create({ target, bundle, editable = false }) {
+    function create({ target, bundle, editable = false, fullscreen = null }) {
         const view = { editable, bundle: null, vmap: null, selected: null, marked: new Set(), children: new Map(), waterNames: true, listeners: {} };
         const map = bundle.map;
         let extent = [0, 0, map.width, map.height];
@@ -460,22 +460,37 @@
                 star: Boolean(feature.get("capital"))
             });
         };
-        const pointStyle = (feature) => {
+        // A place's name is sized by what it is (a capital's is largest, a village's smallest), as a
+        // share of the map, so it grows with the map as you zoom and appears when it is big enough
+        // to read. Like the state names it fades as it gets large, but only well after the state
+        // names do, since a place is what you zoom in to look at. A selected place always shows.
+        const PLACE_SIZE = { capital: 1, city: 0.85, port: 0.65, fortress: 0.6, town: 0.6, landmark: 0.5, ruin: 0.45, village: 0.4, other: 0.45 };
+        const pointStyle = (feature, resolution) => {
             const chosen = selectedIs("point", feature.get("id"));
+            const units = Math.max(map.width, map.height) * 0.018 * (PLACE_SIZE[feature.get("kind")] || 0.45);
+            let px = units / resolution;
+            let alpha = nameOpacity(px / 2);
+            if (chosen) {
+                px = Math.max(px, 13);
+                alpha = 1;
+            }
+            const size = Math.round(Math.min(px, 40));
             return new ol.style.Style({
                 image: new ol.style.Circle({
                     radius: chosen ? 8 : 5.5,
                     fill: new ol.style.Fill({ color: chosen ? colors.accent : colors.point }),
                     stroke: new ol.style.Stroke({ color: "#ffffff", width: 2 })
                 }),
-                text: new ol.style.Text({
-                    text: feature.get("name"),
-                    font: `13px ${colors.serif}`,
-                    offsetY: -16,
-                    fill: new ol.style.Fill({ color: colors.label }),
-                    stroke: new ol.style.Stroke({ color: colors.halo, width: 4 }),
-                    overflow: false
-                })
+                text: alpha > 0
+                    ? new ol.style.Text({
+                        text: feature.get("name"),
+                        font: `${size}px ${colors.serif}`,
+                        offsetY: -(10 + size * 0.7),
+                        fill: new ol.style.Fill({ color: withOpacity(colors.label, Math.round(alpha * 20) / 20) }),
+                        stroke: new ol.style.Stroke({ color: withOpacity(colors.halo, Math.round(alpha * 20) / 20), width: Math.max(3, size / 4) }),
+                        overflow: false
+                    })
+                    : undefined
             });
         };
 
@@ -534,6 +549,30 @@
         view.ol = olMap;
         view.olView = olView;
         view.projection = projection;
+
+        // Full screen: the map together with its side column (`fullscreen` is the element holding both).
+        if (fullscreen && document.fullscreenEnabled) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "map-fullscreen";
+            const sync = () => {
+                const on = document.fullscreenElement === fullscreen;
+                button.textContent = on ? "⤡" : "⤢";
+                button.title = on ? "Leave full screen" : "Full screen";
+                button.setAttribute("aria-label", button.title);
+                olMap.updateSize();
+            };
+            button.addEventListener("click", () => {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                } else {
+                    fullscreen.requestFullscreen().catch(() => {});
+                }
+            });
+            document.addEventListener("fullscreenchange", sync);
+            olMap.addControl(new ol.control.Control({ element: button }));
+            sync();
+        }
 
         // ---- (re)building the content ----
         function rebuild(next) {
@@ -1025,9 +1064,9 @@
         return n.toLocaleString(undefined, { maximumFractionDigits: n >= 1 ? 1 : 2 });
     }
 
-    // Capital, province, vassal, march, territory (the status of a state within a superstate).
+    // Capital, province, region, vassal, march, territory (the status of a state within a superstate).
     const STATUS_NAMES = {
-        capital: "Capital state", province: "Province", vassal: "Vassal", march: "March", territory: "Territory"
+        capital: "Capital state", province: "Province", region: "Region", vassal: "Vassal", march: "March", territory: "Territory"
     };
 
     // Fetches a map's elevation grid ({ cols, rows, cell, data }), or null if it has none.

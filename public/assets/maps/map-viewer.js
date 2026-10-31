@@ -29,13 +29,29 @@
     let bundle = null;
 
     // The states as a tree: a superstate with its clients indented below it.
+    const collapsed = new Set(); // superstates whose clients are folded away
+
     function stateList(nodes) {
         return el("ul", {},
             nodes.map((s) =>
                 el("li", {},
-                    el("button", { type: "button", onclick: () => choose({ type: "state", id: s.id }, true) },
-                        el("span", { class: "swatch", style: `background:${s.color}` }), s.name),
-                    s.kids.length ? stateList(s.kids) : null)));
+                    el("div", { class: "tree-row" },
+                        s.kids.length
+                            ? el("button", {
+                                type: "button",
+                                class: "fold",
+                                title: collapsed.has(s.id) ? `Show its ${s.kids.length} states` : "Fold its states away",
+                                "aria-expanded": collapsed.has(s.id) ? "false" : "true",
+                                onclick: () => {
+                                    collapsed.has(s.id) ? collapsed.delete(s.id) : collapsed.add(s.id);
+                                    overview();
+                                }
+                            }, collapsed.has(s.id) ? "▸" : "▾")
+                            : el("span", { class: "fold-spacer" }),
+                        el("button", { type: "button", onclick: () => choose({ type: "state", id: s.id }, true) },
+                            el("span", { class: "swatch", style: `background:${s.color}` }), s.name,
+                            s.kids.length && collapsed.has(s.id) ? ` (${s.kids.length})` : "")),
+                    s.kids.length && !collapsed.has(s.id) ? stateList(s.kids) : null)));
     }
 
     function overview() {
@@ -77,7 +93,7 @@
                             : null)
                     : null,
                 clients.length
-                    ? el("div", {}, el("p", { class: "muted" }, "Made up of:"),
+                    ? el("details", { class: "clients", open: "" }, el("summary", { class: "muted" }, `Made up of ${clients.length} state${clients.length === 1 ? "" : "s"}`),
                         el("ul", {}, clients.map((c) =>
                             el("li", {}, el("button", { type: "button", onclick: () => choose({ type: "state", id: c.id }, true) },
                                 el("span", { class: "swatch", style: `background:${c.color}` }), `${c.name} (${statusOf(c).toLowerCase()})`)))))
@@ -144,7 +160,7 @@
         .then((response) => response.json())
         .then((data) => {
             bundle = data;
-            view = MapCore.create({ target, bundle, editable: false });
+            view = MapCore.create({ target, bundle, editable: false, fullscreen: document.querySelector(".map-layout") });
             overview();
             addElevationOption();
 
