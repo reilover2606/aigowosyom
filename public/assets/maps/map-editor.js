@@ -266,6 +266,13 @@
                 })
             });
         }
+        if (kind === "candidate") {
+            const hot = feature.get("hot");
+            return new ol.style.Style({
+                stroke: new ol.style.Stroke({ color: accent, width: hot ? 4 : 2.5, lineDash: hot ? undefined : [8, 6] }),
+                fill: new ol.style.Fill({ color: hot ? "rgba(212,169,0,0.45)" : "rgba(212,169,0,0.22)" })
+            });
+        }
         if (kind === "corner") {
             return new ol.style.Style({
                 image: new ol.style.Circle({
@@ -501,7 +508,7 @@
         elevate: "Press on the land and drag UP to raise it, DOWN to lower it: the land around is pulled along. A wide, soft brush makes hills and gradual slopes; a sharp one makes mountains.",
         smooth: "Paint over the land to even out its elevation (softening ridges and valleys).",
         reshape: "Drag a corner to move it, drag an edge to add a corner, Alt-click a corner to remove it. Land, lakes and rivers snap to each other.",
-        state: "Click corners. Clicking on a neighbour's border or corner shares it, and clicking on the coast snaps to it (clicking two points on the coast follows it). Double-click or Enter to finish, Backspace to undo a corner, Esc to cancel.",
+        state: "Click corners. Clicking on a neighbour's border or corner shares it, and clicking on the coast snaps to it (clicking two points on the coast follows it). Enter completes the state along existing borders and the coast (if two states would fit, click the one you want); double-click or Shift+Enter closes it with a straight line. Backspace undoes a corner, Esc cancels.",
         borders: "Drag a corner (shared corners move for every state; it snaps to the coast). Drop a corner on another to weld them. Double-click a border to add a corner; Alt-click a corner to remove it.",
         place: "Click the map to put a place there.",
         movePlace: "Click the map to move the place to that spot.",
@@ -772,6 +779,10 @@
             case "reshape":
                 break;
             case "state":
+                if (state.choosing) {
+                    chooseCandidate(event.coordinate);
+                    break;
+                }
                 queueDraw(() => addDrawPoint(event.coordinate));
                 break;
             case "borders":
@@ -796,7 +807,9 @@
     function onDoubleClick(event) {
         if (state.mode === "state") {
             event.preventDefault();
-            finishState();
+            if (!state.choosing) {
+                finishState();
+            }
         } else if (state.mode === "borders") {
             event.preventDefault();
             addCorner(event.coordinate);
@@ -807,7 +820,9 @@
         if (!state.view || event.dragging) {
             return;
         }
-        if (state.mode === "state" || state.mode === "scale") {
+        if (state.mode === "state" && state.choosing) {
+            hoverCandidate(event.coordinate);
+        } else if (state.mode === "state" || state.mode === "scale") {
             updateRubber(event.coordinate);
         } else if (state.mode === "elevate" || state.mode === "smooth") {
             showBrush(event.coordinate);
@@ -866,6 +881,7 @@
     }
 
     function cancelDrawing() {
+        closeChoosing();
         const touched = state.draw && state.draw.touched;
         state.draw = null;
         sketchSource.clear();
@@ -988,23 +1004,114 @@
     }
 
     function finishState() {
-        return queueDraw(finishStateNow);
+        return queueDraw(() => finishStateNow());
     }
 
-    async function finishStateNow() {
+    // ---- autocomplete ----
+    // Enter closes the line the user drew by following existing borders and the coast. When the
+    // line splits the open ground into two possible states, both are outlined and the user
+    // clicks the one they mean.
+
+    function autocompleteState() {
+        return queueDraw(async () => {
+            const draw = state.draw;
+            if (!draw || draw.points.length < 2) {
+                await finishStateNow();
+                return;
+            }
+            const points = draw.points.map((p) => ({ x: p.x, y: p.y, id: p.id }));
+            const result = await api("POST", `/api/maps/${state.mapId}/complete`, { points });
+            const found = result.candidates || [];
+
+            if (!found.length) {
+                if (draw.points.length >= 3) {
+                    await finishStateNow(); // nothing to complete: close it with a straight line
+                } else {
+                    say(result.message || "Nothing to complete from that line.", "error");
+                }
+                return;
+            }
+            if (found.length === 1) {
+                await finishStateNow(found[0]);
+                return;
+            }
+            openChoosing(found);
+        });
+    }
+
+    function openChoosing(candidates) {
+        closeChoosing();
+        const dialog = h("dialog", { class: "choosing" },
+            h("h3", {}, "Two states fit"),
+            h("p", {}, "That line could close either of the outlined areas. Click the one you want."),
+            h("div", { class: "actions" },
+                h("button", { type: "button", onclick: () => { closeChoosing(); renderSketch(null); } }, "Keep drawing")));
+        document.body.append(dialog);
+        dialog.show();
+        state.choosing = { candidates, dialog, hot: null };
+        renderChoosing(null);
+        say("Click the area you want the state to cover.");
+    }
+
+    function closeChoosing() {
+        if (state.choosing) {
+            state.choosing.dialog.remove();
+            state.choosing = null;
+        }
+    }
+
+    function candidateAt(coordinate) {
+        return state.choosing.candidates.find((c) => insideRing(coordinate, c.outline)) || null;
+    }
+
+    function renderChoosing(hot) {
+        sketchSource.clear();
+        const path = state.draw.points.map((p) => [p.x, p.y]);
+        for (const c of state.choosing.candidates) {
+            sketchSource.addFeature(new ol.Feature({ geometry: new ol.geom.Polygon([c.outline]), kind: "candidate", hot: c === hot }));
+        }
+        sketchSource.addFeature(new ol.Feature({ geometry: new ol.geom.LineString(path), kind: "line" }));
+    }
+
+    function hoverCandidate(coordinate) {
+        const hot = candidateAt(coordinate);
+        if (hot !== state.choosing.hot) {
+            state.choosing.hot = hot;
+            renderChoosing(hot);
+        }
+        viewEl.querySelector(".ol-viewport").style.cursor = hot ? "pointer" : "";
+    }
+
+    function chooseCandidate(coordinate) {
+        const picked = candidateAt(coordinate);
+        if (!picked) {
+            say("Click inside one of the outlined areas.", "error");
+            return;
+        }
+        viewEl.querySelector(".ol-viewport").style.cursor = "";
+        closeChoosing();
+        queueDraw(() => finishStateNow(picked));
+    }
+
+    async function finishStateNow(completed = null) {
         const draw = state.draw;
         if (!draw) {
             return;
         }
 
         // Drop a repeated last corner (a double-click).
-        const points = draw.points.filter((p, i) => i === 0 || !(p.x === draw.points[i - 1].x && p.y === draw.points[i - 1].y));
-        if (points.length < 3) {
+        let points = draw.points.filter((p, i) => i === 0 || !(p.x === draw.points[i - 1].x && p.y === draw.points[i - 1].y));
+        if (!completed && points.length < 3) {
             say("A state needs at least three corners.", "error");
             return;
         }
 
-        const ring = points.map((p) => (p.id ? { id: p.id } : { x: p.x, y: p.y }));
+        let ring = points.map((p) => (p.id ? { id: p.id } : { x: p.x, y: p.y }));
+        if (completed) {
+            // Autocompleted: the server worked out every corner, along existing borders and the coast.
+            ring = completed.ring;
+            points = completed.outline.slice(0, -1).map(([x, y]) => ({ x, y }));
+        }
         const target = draw.target;
         // Corners added on a neighbour's border while drawing become part of this one step
         // (unless the state ends up not being made).
@@ -2369,7 +2476,7 @@
     // Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes (a state being drawn takes Ctrl+Z as "take back a corner").
     document.addEventListener("keydown", (event) => {
         const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName) || event.target.isContentEditable;
-        if (typing || document.querySelector("dialog[open]") || !(event.ctrlKey || event.metaKey)) {
+        if (typing || document.querySelector("dialog[open]:not(.choosing)") || state.choosing || !(event.ctrlKey || event.metaKey)) {
             return;
         }
         const key = event.key.toLowerCase();
@@ -2390,10 +2497,14 @@
     // Esc abandons whatever is being drawn: a piece of land, lake, river or sea outline, a state
     // (or the island or hole about to be added to one), or a distance being measured.
     document.addEventListener("keydown", (event) => {
-        if (event.key !== "Escape" || document.querySelector("dialog[open]")) {
+        if (event.key !== "Escape" || document.querySelector("dialog[open]:not(.choosing)")) {
             return;
         }
-        if (["land", "lake", "river", "ocean"].includes(state.mode) && activeDraw) {
+        if (state.choosing) {
+            closeChoosing();
+            renderSketch(null);
+            say("Back to drawing the line.");
+        } else if (["land", "lake", "river", "ocean"].includes(state.mode) && activeDraw) {
             activeDraw.abortDrawing();
             say("Cancelled.");
         } else if (state.mode === "state" && state.draw) {
@@ -2414,9 +2525,16 @@
         if (state.mode !== "state" || !state.draw || ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {
             return;
         }
+        if (state.choosing) {
+            return;
+        }
         if (event.key === "Enter") {
             event.preventDefault();
-            finishState();
+            if (event.shiftKey) {
+                finishState();
+            } else {
+                autocompleteState();
+            }
         } else if (event.key === "Backspace") {
             event.preventDefault();
             state.draw.points.pop();

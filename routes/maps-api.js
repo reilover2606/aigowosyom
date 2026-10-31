@@ -98,6 +98,12 @@ module.exports = async function mapsApi(req, res, url) {
             }
         }
 
+        // POST /api/maps/:id/complete  { points: [{ x, y, id? }] }  the states a line could close off
+        if (sub === "complete" && parts.length === 4 && method === "POST") {
+            const data = await readJson(req);
+            return send(200, maps.completeState(id, data && data.points));
+        }
+
         // POST /api/maps/:id/restore  { features, vertices, states, points }  (undo and redo)
         if (sub === "restore" && parts.length === 4 && method === "POST") {
             const body = await readBuffer(req, 40 * 1024 * 1024);

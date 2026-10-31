@@ -456,3 +456,24 @@ html[data-theme="neumorph"][data-mode="dark"] {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ---- State autocomplete: a notice that stays out of the way while the user picks an area ---- */
+
+dialog.choosing {
+    position: fixed;
+    inset: auto 24px 24px auto;
+    margin: 0;
+    width: min(340px, 90vw);
+    z-index: 20;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+
+dialog.choosing h3 {
+    margin: 0 0 8px;
+}
+
+dialog.choosing .actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
