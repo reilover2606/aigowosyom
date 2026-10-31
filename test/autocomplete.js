@@ -106,4 +106,30 @@ check("a space that would surround another state is not offered", () => {
     assert.strictEqual(Math.round(area(r.candidates[0].outline)), 3000);
 });
 
+// Two states reaching the coast, A on the west (x 0..30) and B on the east (x 70..100).
+const twoVertices = new Map([[1, [0, 0]], [2, [30, 0]], [3, [30, 100]], [4, [0, 100]], [5, [70, 0]], [6, [100, 0]], [7, [100, 100]], [8, [70, 100]]]);
+const twoStates = [{ id: 1, polygons: [[[1, 2, 3, 4]]] }, { id: 2, polygons: [[[5, 6, 7, 8]]] }];
+const two = { vertices: twoVertices, states: twoStates, land, eps };
+
+check("a space bounded by two states' borders and the coast", () => {
+    // From A's east border to B's west border: above the line is the strip up to the north coast.
+    const r = complete({ ...two, points: [{ x: 30, y: 50 }, { x: 50, y: 40 }, { x: 70, y: 50 }] });
+    assert.strictEqual(r.candidates.length, 2, r.message);
+    const areas = r.candidates.map((c) => Math.round(area(c.outline))).sort((a, b) => a - b);
+    assert.deepStrictEqual(areas, [1800, 2200]);
+    for (const c of r.candidates) {
+        const ids = c.ring.filter((item) => item.id).map((item) => item.id);
+        assert.ok((ids.includes(3) && ids.includes(8)) || (ids.includes(2) && ids.includes(5)), "uses both states' corners: " + ids);
+    }
+});
+
+check("a line that follows a border in the middle still completes", () => {
+    // From the south coast onto A's border, along A's border, then off it to the north coast:
+    // the state to the east is bounded by A, B and the coast.
+    const r = complete({ ...two, points: [{ x: 50, y: 0 }, { x: 40, y: 30 }, { x: 30, y: 40 }, { x: 30, y: 60, id: null }, { x: 45, y: 70 }, { x: 50, y: 100 }] });
+    assert.strictEqual(r.candidates.length, 1, r.message);
+    const c = r.candidates[0];
+    assert.ok(c.ring.some((item) => item.id === 5) && c.ring.some((item) => item.id === 8), "also follows B");
+});
+
 console.log(`\n${passed} checks passed`);
