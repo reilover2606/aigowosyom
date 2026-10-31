@@ -98,6 +98,19 @@ module.exports = async function mapsApi(req, res, url) {
             }
         }
 
+        // POST /api/maps/:id/restore  { features, vertices, states, points }  (undo and redo)
+        if (sub === "restore" && parts.length === 4 && method === "POST") {
+            const body = await readBuffer(req, 40 * 1024 * 1024);
+            let snapshot;
+            try {
+                snapshot = JSON.parse(body.toString("utf8"));
+            } catch {
+                throw new HttpError(400, "Invalid JSON");
+            }
+            maps.restoreMap(id, snapshot);
+            return send(200, { ok: true });
+        }
+
         if (parts.length >= 4 && method === "POST") {
             if (sub === "features" && parts.length === 4) {
                 return send(201, maps.createFeature(id, await readJson(req)));

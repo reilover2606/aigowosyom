@@ -251,6 +251,34 @@
         return Math.round(28 + t * 215);
     }
 
+    // The colour ramp: lowland green, through yellow and tan, to brown, then
+    // grey rock and white at the top.
+    const RAMP = [
+        [0, [84, 138, 72]], [300, [138, 168, 88]], [900, [196, 186, 108]], [2200, [186, 148, 92]],
+        [4500, [148, 108, 80]], [8500, [198, 192, 186]], [14000, [250, 250, 250]]
+    ];
+
+    function rampColor(feet) {
+        if (feet <= RAMP[0][0]) {
+            return RAMP[0][1];
+        }
+        for (let i = 1; i < RAMP.length; i++) {
+            if (feet <= RAMP[i][0]) {
+                const [f0, c0] = RAMP[i - 1];
+                const [f1, c1] = RAMP[i];
+                const t = (feet - f0) / (f1 - f0);
+                return c0.map((v, k) => Math.round(v + (c1[k] - v) * t));
+            }
+        }
+        return RAMP[RAMP.length - 1][1];
+    }
+
+    // CSS gradients showing what the shading looks like, low to high.
+    const elevationKey = {
+        gray: "linear-gradient(to right, #1c1c1c, #7a7a7a 35%, #f3f3f3)",
+        colors: `linear-gradient(to right, ${RAMP.map(([feet, c]) => `rgb(${c.join(",")}) ${Math.round((feet / 14000) * 100)}%`).join(", ")})`
+    };
+
     const feetText = (feet) => `${Math.round(feet).toLocaleString()} ft`;
 
     // ------------------------------------------------------
@@ -692,13 +720,45 @@
         });
         view.layers.elevation.setSource(elevationSource);
 
+        // How the elevation is drawn: a tint ("none", "gray" or "colors") and/or
+        // relief shading (light falling from the north-west on the slopes).
+        view.elevationStyle = { tint: "none", relief: false };
+
+        // Relief: how much light a cell catches, 1 on flat ground, from the slope toward its neighbours.
+        const LIGHT = [-0.5, 0.5, Math.SQRT1_2]; // from the north-west, 45 degrees up
+        const EXAGGERATION = 4; // slopes are gentle at a mile a cell, so they are stretched
+        function relief(grid, col, row, cellFeet) {
+            const at = (c, r) => {
+                const value = grid.data[Math.max(0, Math.min(grid.rows - 1, r)) * grid.cols + Math.max(0, Math.min(grid.cols - 1, c))];
+                return value === NO_LAND ? grid.data[row * grid.cols + col] : value; // no cliff at the coast
+            };
+            const dx = ((at(col + 1, row) - at(col - 1, row)) / (2 * cellFeet)) * EXAGGERATION;
+            const dy = ((at(col, row + 1) - at(col, row - 1)) / (2 * cellFeet)) * EXAGGERATION;
+            const length = Math.hypot(dx, dy, 1);
+            const lit = (-dx * LIGHT[0] - dy * LIGHT[1] + LIGHT[2]) / length;
+            return Math.max(0.3, Math.min(1.45, lit / Math.SQRT1_2));
+        }
+
         // Paints cells (all of them, or the rectangle { x, y, w, h }) into the shading.
         view.paintElevation = (rect) => {
             const grid = view.elevation;
             if (!grid) {
                 return;
             }
-            const { x, y, w, h } = rect || { x: 0, y: 0, w: grid.cols, h: grid.rows };
+            const { tint, relief: shaded } = view.elevationStyle;
+            const cellFeet = grid.cell * (view.bundle ? view.bundle.map.miles_per_unit : 1) * 5280;
+
+            // Relief looks at the neighbours, so a changed cell changes the ones around it too.
+            let { x, y, w, h } = rect || { x: 0, y: 0, w: grid.cols, h: grid.rows };
+            if (shaded) {
+                const x1 = Math.min(grid.cols, x + w + 1);
+                const y1 = Math.min(grid.rows, y + h + 1);
+                x = Math.max(0, x - 1);
+                y = Math.max(0, y - 1);
+                w = x1 - x;
+                h = y1 - y;
+            }
+
             const image = shadeContext.createImageData(w, h);
             for (let row = 0; row < h; row++) {
                 for (let col = 0; col < w; col++) {
@@ -707,15 +767,38 @@
                     const at = ((h - 1 - row) * w + col) * 4;
                     if (feet === NO_LAND) {
                         image.data[at + 3] = 0;
-                    } else {
-                        const gray = elevationShade(feet);
-                        image.data[at] = image.data[at + 1] = image.data[at + 2] = gray;
-                        image.data[at + 3] = 255;
+                        continue;
                     }
+                    let color;
+                    if (tint === "colors") {
+                        color = rampColor(feet);
+                    } else if (tint === "gray") {
+                        const gray = elevationShade(feet);
+                        color = [gray, gray, gray];
+                    } else {
+                        color = [200, 200, 200]; // relief alone: a neutral surface to light
+                    }
+                    const light = shaded ? relief(grid, x + col, y + row, cellFeet) : 1;
+                    image.data[at] = Math.min(255, color[0] * light);
+                    image.data[at + 1] = Math.min(255, color[1] * light);
+                    image.data[at + 2] = Math.min(255, color[2] * light);
+                    image.data[at + 3] = 255;
                 }
             }
             shadeContext.putImageData(image, x, grid.rows - y - h);
             elevationSource.changed();
+        };
+
+        // { tint, relief }: any combination; both off hides the layer.
+        view.setElevationStyle = (style) => {
+            view.elevationStyle = { tint: style.tint || "none", relief: Boolean(style.relief) };
+            const on = view.elevationStyle.tint !== "none" || view.elevationStyle.relief;
+            view.layers.elevation.setVisible(on);
+            if (!on) {
+                readout.hidden = true;
+            } else {
+                view.paintElevation();
+            }
         };
 
         // Sets (or clears, with null) the elevation grid to show.
@@ -754,13 +837,6 @@
             }
             const feet = view.elevation.data[at[1] * view.elevation.cols + at[0]];
             return feet === NO_LAND ? null : feet;
-        };
-
-        view.showElevation = (on) => {
-            view.layers.elevation.setVisible(on);
-            if (!on) {
-                readout.hidden = true;
-            }
         };
 
         // Elevation under the pointer, while the shading is on.
@@ -950,8 +1026,73 @@
         return { cols: meta.cols, rows: meta.rows, cell: meta.cell, updated_at: meta.updated_at, data: new Int16Array(buffer) };
     }
 
+    // The controls for how elevation is drawn: a tint (off, grayscale or
+    // colours) and relief shading, with a key. The choice is remembered.
+    const ELEVATION_KEY = "aigowosyom.maps.elevation";
+
+    function savedElevationStyle() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(ELEVATION_KEY));
+            if (saved && ["none", "gray", "colors"].includes(saved.tint)) {
+                return { tint: saved.tint, relief: Boolean(saved.relief) };
+            }
+        } catch { /* nothing saved, or storage blocked */ }
+        return { tint: "none", relief: false };
+    }
+
+    // Returns { element, get(), set(style) }; `onChange(style)` runs when the person changes it.
+    function elevationControls(initial, onChange) {
+        let style = { ...initial };
+        const id = `relief-${Math.random().toString(36).slice(2)}`;
+
+        const wrap = document.createElement("span");
+        wrap.className = "elevation-controls";
+        wrap.innerHTML = `<label>Elevation <select>
+                <option value="none">off</option>
+                <option value="gray">grayscale</option>
+                <option value="colors">colours</option>
+            </select></label>
+            <span class="elevation-key" hidden>low<span class="map-elevation-key"></span>high</span>
+            <input type="checkbox" id="${id}"> <label for="${id}">Relief shading</label>`;
+
+        const select = wrap.querySelector("select");
+        const relief = wrap.querySelector("input");
+        const key = wrap.querySelector(".elevation-key");
+        const bar = wrap.querySelector(".map-elevation-key");
+
+        const show = () => {
+            select.value = style.tint;
+            relief.checked = style.relief;
+            key.hidden = style.tint === "none";
+            bar.style.background = style.tint === "none" ? "" : elevationKey[style.tint];
+        };
+
+        const changed = () => {
+            style = { tint: select.value, relief: relief.checked };
+            show();
+            try {
+                localStorage.setItem(ELEVATION_KEY, JSON.stringify(style));
+            } catch { /* not remembered */ }
+            onChange({ ...style });
+        };
+
+        select.addEventListener("change", changed);
+        relief.addEventListener("change", changed);
+        show();
+
+        return {
+            element: wrap,
+            get: () => ({ ...style }),
+            set(next) {
+                style = { ...next };
+                show();
+            }
+        };
+    }
+
     window.MapCore = {
+        elevationControls, savedElevationStyle,
         create, colors, readColors, hexAlpha, stateCoordinates, vertexMap, stateTree, approx, STATUS_NAMES,
-        loadElevation, elevationShade, NO_LAND, feetText
+        loadElevation, elevationShade, elevationKey, NO_LAND, feetText
     };
 })();

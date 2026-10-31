@@ -115,26 +115,29 @@
         }
     }
 
-    // Elevation: shown on request, as lighter (higher) and darker (lower) land.
+    // Elevation: shown on request, as a tint (grayscale or colours) and/or relief shading.
     function addElevationOption() {
         if (!bundle.elevation) {
             return;
         }
-        const box = el("input", { type: "checkbox", id: "showElevation" });
-        const options = el("div", { class: "map-options" },
-            box,
-            el("label", { for: "showElevation" }, "Show elevation"),
-            el("span", { class: "muted" }, " low", el("span", { class: "map-elevation-key" }), "high · point at the land for its height"));
+
+        let loaded = null;
+        const apply = async (style) => {
+            if ((style.tint !== "none" || style.relief) && !loaded) {
+                loaded = MapCore.loadElevation(bundle.elevation, bundle.map.id);
+                view.setElevation(await loaded);
+            }
+            view.setElevationStyle(style);
+        };
+
+        const initial = MapCore.savedElevationStyle();
+        const controls = MapCore.elevationControls(initial, apply);
+        const options = el("div", { class: "map-options" }, controls.element, el("span", { class: "muted" }, " · point at the land for its height"));
         document.querySelector(".map-layout").before(options);
 
-        let loaded = false;
-        box.addEventListener("change", async () => {
-            if (box.checked && !loaded) {
-                loaded = true;
-                view.setElevation(await MapCore.loadElevation(bundle.elevation, bundle.map.id));
-            }
-            view.showElevation(box.checked);
-        });
+        if (initial.tint !== "none" || initial.relief) {
+            apply(initial);
+        }
     }
 
     fetch(`/api/maps/${mapId}`)

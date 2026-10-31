@@ -24,12 +24,18 @@
         draw: null, // a state being drawn: { points, target }
         followBorders: true,
         coastSnap: true,
+        elevationStyle: MapCore.savedElevationStyle(), // how elevation is drawn: { tint, relief }
+        undo: [], // steps that can be undone, oldest first
+        redo: [],
+        lastSnapshot: null, // the map's drawing after the last step
+        undoMapId: null,
+        restoring: false,
         elevation: null, // the grid being edited: { cols, rows, cell, updated_at, data }
         // Elevation brushes: radius in miles; sharpness 0 (soft hills) to 1 (sharp peaks);
         // how many feet a pixel of dragging is worth; how hard smoothing works.
         brush: { radius: 40, sharpness: 0.35, feetPerPixel: 12, smoothing: 0.5 },
         multi: [], // states marked together (shift-click), for combining
-        layers: { elevation: false, tracers: true, land: true, lakes: true, rivers: true, waterNames: true, states: true, labels: true, points: true },
+        layers: { tracers: true, land: true, lakes: true, rivers: true, waterNames: true, states: true, labels: true, points: true },
         interactions: []
     };
 
@@ -173,7 +179,9 @@
             state.multi = [];
         }
 
+        const previousGrid = state.elevation;
         await refreshElevation();
+        recordChange(snapshotOf(state.bundle), previousGrid);
 
         if (remount || !state.view) {
             mountView();
@@ -528,9 +536,12 @@
             } else if (mode === "reshape") {
                 refreshModify();
             } else if (mode === "elevate" || mode === "smooth") {
-                state.layers.elevation = true; // the shading is how you see what you are doing
-                applyLayerVisibility();
-                renderLayers();
+                // The shading is how you see what you are doing.
+                if (state.elevationStyle.tint === "none" && !state.elevationStyle.relief) {
+                    state.elevationStyle = { tint: "gray", relief: false };
+                    elevationControls.set(state.elevationStyle);
+                    applyLayerVisibility();
+                }
                 installBrush(mode);
             }
         }
@@ -575,10 +586,7 @@
 
         await guarded(async () => {
             await api("PUT", `/api/map-features/${feature.get("id")}`, { geometry: json });
-            const stored = state.bundle.features.find((f) => f.id === feature.get("id"));
-            if (stored) {
-                stored.geometry = json;
-            }
+            await load(); // so that it is a step that can be undone
         });
     }
 
@@ -826,8 +834,12 @@
     }
 
     function cancelDrawing() {
+        const touched = state.draw && state.draw.touched;
         state.draw = null;
         sketchSource.clear();
+        if (touched) {
+            load(); // corners added on a neighbour's border while drawing are a step of their own
+        }
     }
 
     async function addDrawPoint(coordinate) {
@@ -856,6 +868,7 @@
                 return;
             }
             point = { id: made.id, x: made.x, y: made.y };
+            draw.touched = true;
             await load();
         }
 
@@ -961,6 +974,10 @@
 
         const ring = points.map((p) => (p.id ? { id: p.id } : { x: p.x, y: p.y }));
         const target = draw.target;
+        // Corners added on a neighbour's border while drawing become part of this one step
+        // (unless the state ends up not being made).
+        const touched = draw.touched;
+        draw.touched = false;
         cancelDrawing();
         state.drawTarget = null;
 
@@ -997,7 +1014,10 @@
         });
 
         if (!answer) {
-            return; // cancelled: nothing is saved
+            if (touched) {
+                await load(); // nothing is made, but the corners it added are there
+            }
+            return;
         }
 
         await guarded(async () => {
@@ -1682,7 +1702,7 @@
         for (const name of ["land", "lakes", "rivers", "states", "labels", "points"]) {
             view.show(name, state.layers[name]);
         }
-        view.showElevation(state.layers.elevation);
+        view.setElevationStyle(state.elevationStyle);
         view.show("oceans", state.layers.waterNames);
         view.show("waterLabels", state.layers.waterNames);
         view.setWaterNames(state.layers.waterNames);
@@ -1697,8 +1717,14 @@
 
     const layersEl = h("div", { class: "box" });
 
+    // How elevation is drawn (the same control as on the public map).
+    const elevationControls = MapCore.elevationControls(state.elevationStyle, (style) => {
+        state.elevationStyle = style;
+        applyLayerVisibility();
+    });
+
     function renderLayers() {
-        const names = [["tracers", "Tracer images"], ["land", "Land"], ["lakes", "Lakes"], ["rivers", "Rivers"], ["elevation", "Elevation shading"], ["waterNames", "River, lake and sea names"], ["states", "States"], ["labels", "State names"], ["points", "Places"]];
+        const names = [["tracers", "Tracer images"], ["land", "Land"], ["lakes", "Lakes"], ["rivers", "Rivers"], ["waterNames", "River, lake and sea names"], ["states", "States"], ["labels", "State names"], ["points", "Places"]];
         put(layersEl, 
             h("h3", {}, "Layers"),
             ...names.map(([key, label]) => h("div", { class: "field check" },
@@ -1706,7 +1732,8 @@
                     state.layers[key] = event.target.checked;
                     applyLayerVisibility();
                 } }),
-                h("label", { for: `layer-${key}` }, label))));
+                h("label", { for: `layer-${key}` }, label))),
+            h("div", { class: "field elevation-field" }, elevationControls.element));
     }
 
     // ------------------------------------------------------
@@ -1714,6 +1741,244 @@
     // ------------------------------------------------------
 
     const toolsEl = h("div", { class: "box" });
+
+    // ------------------------------------------------------
+    // Undo and redo
+    // ------------------------------------------------------
+    //
+    // After every load the map's drawing (shapes, corners, states, places) is
+    // compared with how it was; if it changed, that is one undoable step, and
+    // undoing it asks the server to put the earlier snapshot back. Brush
+    // strokes on the elevation are steps of their own (the cells they changed).
+    // Not covered: map settings, tracer images, and making or deleting maps.
+
+    const UNDO_DEPTH = 40;
+
+    function snapshotOf(bundle) {
+        return {
+            features: bundle.features.map((f) => ({ id: f.id, kind: f.kind, name: f.name, geometry: f.geometry, hidden: f.hidden, created_at: f.created_at })),
+            vertices: bundle.vertices,
+            states: bundle.states.map((s) => ({
+                id: s.id, name: s.name, color: s.color, label_sans: s.label_sans, hidden: s.hidden,
+                parent_id: s.parent_id, status: s.status, polygons: s.polygons, created_at: s.created_at
+            })),
+            points: bundle.points.map((p) => ({ id: p.id, name: p.name, kind: p.kind, x: p.x, y: p.y, page_id: p.page_id, hidden: p.hidden, created_at: p.created_at }))
+        };
+    }
+
+    function same(a, b) {
+        if (a === b) {
+            return true;
+        }
+        if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
+            return false;
+        }
+        if (Array.isArray(a) !== Array.isArray(b)) {
+            return false;
+        }
+        const keys = Object.keys(a);
+        if (keys.length !== Object.keys(b).length) {
+            return false;
+        }
+        return keys.every((key) => same(a[key], b[key]));
+    }
+
+    // A few words for what changed between two snapshots.
+    function describeChange(before, after) {
+        const byId = (list) => new Map(list.map((x) => [x.id, x]));
+        const quote = (name) => `“${name}”`;
+
+        const statesA = byId(before.states);
+        const statesB = byId(after.states);
+        const addedState = after.states.find((s) => !statesA.has(s.id));
+        if (addedState) {
+            return addedState.polygons.length ? `Draw state ${quote(addedState.name)}` : `Combine into ${quote(addedState.name)}`;
+        }
+        const removedState = before.states.find((s) => !statesB.has(s.id));
+        if (removedState) {
+            return removedState.polygons.length ? `Delete state ${quote(removedState.name)}` : `Dissolve ${quote(removedState.name)}`;
+        }
+
+        const featuresA = byId(before.features);
+        const featuresB = byId(after.features);
+        const addedFeature = after.features.find((f) => !featuresA.has(f.id));
+        if (addedFeature) {
+            return `Draw ${addedFeature.kind === "ocean" ? "sea name" : addedFeature.kind}`;
+        }
+        const removedFeature = before.features.find((f) => !featuresB.has(f.id));
+        if (removedFeature) {
+            return `Delete ${removedFeature.kind === "ocean" ? "sea name" : removedFeature.kind}`;
+        }
+        const changedFeature = after.features.find((f) => !same(f, featuresA.get(f.id)));
+        if (changedFeature) {
+            return same(changedFeature.geometry, featuresA.get(changedFeature.id).geometry)
+                ? `Edit ${changedFeature.kind === "ocean" ? "sea name" : changedFeature.kind}`
+                : `Reshape ${changedFeature.kind === "ocean" ? "sea name" : changedFeature.kind}`;
+        }
+
+        const pointsA = byId(before.points);
+        const pointsB = byId(after.points);
+        const addedPoint = after.points.find((p) => !pointsA.has(p.id));
+        if (addedPoint) {
+            return `Add place ${quote(addedPoint.name)}`;
+        }
+        const removedPoint = before.points.find((p) => !pointsB.has(p.id));
+        if (removedPoint) {
+            return `Delete place ${quote(removedPoint.name)}`;
+        }
+        const changedPoint = after.points.find((p) => !same(p, pointsA.get(p.id)));
+        if (changedPoint) {
+            const old = pointsA.get(changedPoint.id);
+            return old.x !== changedPoint.x || old.y !== changedPoint.y ? `Move place ${quote(changedPoint.name)}` : `Edit place ${quote(changedPoint.name)}`;
+        }
+
+        const changedState = after.states.find((s) => !same(s, statesA.get(s.id)));
+        if (changedState) {
+            const old = statesA.get(changedState.id);
+            if (old.parent_id !== changedState.parent_id) {
+                return "Change grouping";
+            }
+            if (old.status !== changedState.status) {
+                return "Change status";
+            }
+            if (!same(old.polygons, changedState.polygons)) {
+                return `Reshape state ${quote(changedState.name)}`;
+            }
+            return `Edit state ${quote(changedState.name)}`;
+        }
+
+        if (after.vertices.length !== before.vertices.length) {
+            return after.vertices.length > before.vertices.length ? "Add corner" : "Remove corner";
+        }
+        return "Move corner";
+    }
+
+    const landOf = (snapshot) => snapshot.features.filter((f) => f.kind === "land").map((f) => [f.id, f.geometry]);
+
+    function pushUndo(entry) {
+        state.undo.push(entry);
+        if (state.undo.length > UNDO_DEPTH) {
+            state.undo.shift();
+        }
+        state.redo = [];
+        renderUndo();
+    }
+
+    // Called by load() with the map as it now is.
+    function recordChange(snapshot, previousGrid) {
+        if (state.undoMapId !== state.mapId) {
+            state.undo = [];
+            state.redo = [];
+            state.lastSnapshot = null;
+            state.undoMapId = state.mapId;
+        }
+
+        if (state.restoring || state.draw) {
+            // An undo is not itself a step; while a state is being drawn its steps wait for the end.
+            if (state.restoring) {
+                state.lastSnapshot = snapshot;
+            }
+            return;
+        }
+
+        const before = state.lastSnapshot;
+        state.lastSnapshot = snapshot;
+
+        if (before && !same(before, snapshot)) {
+            const landChanged = !same(landOf(before), landOf(snapshot));
+            pushUndo({
+                kind: "map",
+                label: describeChange(before, snapshot),
+                before,
+                after: snapshot,
+                // Reshaping land changes which cells exist: keep the elevation as it was, too.
+                gridBefore: landChanged && previousGrid ? previousGrid.data : null,
+                gridAfter: landChanged && state.elevation ? state.elevation.data.slice() : null
+            });
+        }
+        renderUndo();
+    }
+
+    // Puts a whole grid back (cells that aren't land are left alone by the server).
+    async function putGrid(data) {
+        const grid = state.elevation;
+        if (!data || !grid || data.length !== grid.cols * grid.rows) {
+            return;
+        }
+        await putCells({ x: 0, y: 0, w: grid.cols, h: grid.rows }, data);
+    }
+
+    async function putCells(rect, values) {
+        const response = await fetch(`/api/maps/${state.mapId}/elevation/patch?x=${rect.x}&y=${rect.y}&w=${rect.w}&h=${rect.h}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/octet-stream" },
+            body: values
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(payload.error || `Could not save the elevation (${response.status})`);
+        }
+        return payload;
+    }
+
+    async function step(from, to, verb) {
+        const entry = from.pop();
+        if (!entry) {
+            return;
+        }
+        state.restoring = true;
+        await guarded(async () => {
+            if (entry.kind === "elevation") {
+                const values = verb === "Undid" ? entry.before : entry.after;
+                const grid = state.elevation;
+                for (let row = 0; row < entry.rect.h; row++) {
+                    for (let col = 0; col < entry.rect.w; col++) {
+                        const at = (entry.rect.y + row) * grid.cols + entry.rect.x + col;
+                        if (grid.data[at] !== MapCore.NO_LAND) {
+                            grid.data[at] = values[row * entry.rect.w + col];
+                        }
+                    }
+                }
+                state.view.paintElevation(entry.rect);
+                const payload = await putCells(entry.rect, values);
+                grid.updated_at = payload.updated_at;
+            } else {
+                const snapshot = verb === "Undid" ? entry.before : entry.after;
+                const response = await fetch(`/api/maps/${state.mapId}/restore`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(snapshot)
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(payload.error || `Could not ${verb === "Undid" ? "undo" : "redo"} (${response.status})`);
+                }
+                // The grid follows the land: take its new shape before putting heights back.
+                state.bundle = await api("GET", `/api/maps/${state.mapId}`);
+                await refreshElevation();
+                await putGrid(verb === "Undid" ? entry.gridBefore : entry.gridAfter);
+                await load();
+            }
+            to.push(entry);
+            say(`${verb}: ${entry.label}.`);
+        });
+        state.restoring = false;
+        renderUndo();
+    }
+
+    const undo = () => step(state.undo, state.redo, "Undid");
+    const redo = () => step(state.redo, state.undo, "Redid");
+
+    const undoEl = h("div", { class: "row undo-row" });
+
+    function renderUndo() {
+        const last = state.undo[state.undo.length - 1];
+        const next = state.redo[state.redo.length - 1];
+        put(undoEl,
+            h("button", { type: "button", disabled: !last, title: last ? `Undo: ${last.label} (Ctrl+Z)` : "Nothing to undo", onclick: undo }, "↶ Undo"),
+            h("button", { type: "button", disabled: !next, title: next ? `Redo: ${next.label} (Ctrl+Shift+Z)` : "Nothing to redo", onclick: redo }, "↷ Redo"),
+            h("span", { class: "hint" }, last ? `last: ${last.label}` : ""));
+    }
 
     // ------------------------------------------------------
     // Elevation
@@ -1806,7 +2071,7 @@
                     return false; // the sea: the map pans instead
                 }
 
-                stroke = { mode, radius, startY: event.pixel[1], dirty: null };
+                stroke = { mode, radius, startY: event.pixel[1], dirty: null, original: grid.data.slice() };
 
                 if (mode === "elevate") {
                     stroke.centre = centre;
@@ -1834,7 +2099,25 @@
                 const done = stroke;
                 stroke = null;
                 if (done && done.dirty) {
-                    saveElevation(done.dirty).then(() => say("Saved."));
+                    const rect = done.dirty;
+                    const grid = state.elevation;
+                    const cells = (source) => {
+                        const out = new Int16Array(rect.w * rect.h);
+                        for (let row = 0; row < rect.h; row++) {
+                            for (let col = 0; col < rect.w; col++) {
+                                out[row * rect.w + col] = source[(rect.y + row) * grid.cols + rect.x + col];
+                            }
+                        }
+                        return out;
+                    };
+                    pushUndo({
+                        kind: "elevation",
+                        label: done.mode === "elevate" ? "Raise or lower land" : "Smooth land",
+                        rect,
+                        before: cells(done.original),
+                        after: cells(grid.data)
+                    });
+                    saveElevation(rect).then(() => say("Saved."));
                 }
                 return false;
             },
@@ -1986,6 +2269,7 @@
         const map = currentMap();
         put(toolsEl,
             h("h3", {}, "Tools"),
+            undoEl,
             ...TOOL_GROUPS.map(([title, tools]) => h("div", { class: "tool-group" },
                 h("h4", {}, title),
                 h("div", { class: "tool-grid" }, ...tools.map(([mode, label]) =>
@@ -2038,6 +2322,27 @@
         h("div", { class: "map-side" }, mapBoxEl, toolsEl, inspectorEl, statesEl, layersEl, tracersEl),
         h("div", { class: "map-main" }, viewEl, statusEl));
 
+    // Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes (a state being drawn takes Ctrl+Z as "take back a corner").
+    document.addEventListener("keydown", (event) => {
+        const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName) || event.target.isContentEditable;
+        if (typing || document.querySelector("dialog[open]") || !(event.ctrlKey || event.metaKey)) {
+            return;
+        }
+        const key = event.key.toLowerCase();
+        if (key === "z" && !event.shiftKey) {
+            event.preventDefault();
+            if (state.draw && state.draw.points.length) {
+                state.draw.points.pop();
+                renderSketch(null);
+            } else {
+                undo();
+            }
+        } else if ((key === "z" && event.shiftKey) || key === "y") {
+            event.preventDefault();
+            redo();
+        }
+    });
+
     document.addEventListener("keydown", (event) => {
         if (state.mode !== "state" || !state.draw || ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {
             return;
@@ -2054,6 +2359,8 @@
             renderSketch(null);
         }
     });
+
+    renderUndo();
 
     window.addEventListener("beforeunload", () => sketchSource.clear());
 

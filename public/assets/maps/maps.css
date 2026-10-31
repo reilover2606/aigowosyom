@@ -421,3 +421,38 @@ html[data-theme="neumorph"][data-mode="dark"] {
 .map-side .brush input[type="range"] {
     width: 100%;
 }
+
+.elevation-controls {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+}
+
+.elevation-controls select {
+    width: auto;
+}
+
+.map-side .elevation-field {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border, #e3e5e8);
+}
+
+.elevation-key {
+    font-size: 0.85em;
+    color: var(--muted, #72777d);
+}
+
+.map-side .undo-row {
+    margin-bottom: 4px;
+}
+
+.map-side .undo-row .hint {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
