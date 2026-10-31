@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "rebuild": "npm rebuild better-sqlite3"
+    "rebuild": "npm rebuild better-sqlite3",
+    "test": "node test/polygons.js"
   },
   "engines": {
     "node": ">=20"
