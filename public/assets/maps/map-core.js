@@ -289,7 +289,7 @@
     const mapKeys = ol.events.condition.all(
         ol.events.condition.noModifierKeys,
         ol.events.condition.targetNotEditable,
-        () => !document.querySelector("dialog[open]")
+        () => !document.querySelector("dialog[open]:not(.choosing)")
     );
 
     function create({ target, bundle, editable = false }) {
