@@ -1,0 +1,216 @@
+/* Dark versions of the Default and Neumorphic themes.
+ *
+ * Selected by <html data-theme="default|neumorph" data-mode="dark"> (see
+ * theme.js). Only on screen: printing always uses the light colors.
+ *
+ * Default (dark) recolors the site's own tokens and then the few surfaces
+ * that hard-code a light color. Neumorphic (dark) only swaps the palette
+ * variables of neumorph.css, since that theme is built on them.
+ * Language and category colors are left alone in both.
+ */
+
+@media screen {
+
+/* ==================================================================
+   Default (dark)
+   ================================================================== */
+
+html[data-theme="default"][data-mode="dark"] {
+    color-scheme: dark;
+
+    --bg: #151719;
+    --panel: #1f2326;
+    --border: #3a4046;
+    --text: #e3e6e8;
+    --muted: #9aa3ab;
+    --link: #7fabff;
+    --missing: #ff7b7b;
+    --accent: #3f7350;
+}
+
+html[data-theme="default"][data-mode="dark"],
+html[data-theme="default"][data-mode="dark"] body {
+    background: var(--bg);
+    color: var(--text);
+}
+
+/* Slim bar */
+html[data-theme="default"][data-mode="dark"] .sitebar {
+    background: #1b1e20;
+    border-bottom-color: #2c3135;
+    color: #9aa3ab;
+}
+html[data-theme="default"][data-mode="dark"] .sitebar a { color: #9aa3ab; }
+html[data-theme="default"][data-mode="dark"] .sitebar a:hover,
+html[data-theme="default"][data-mode="dark"] .sitebar a[aria-current="page"] { color: #f1f3f4; }
+html[data-theme="default"][data-mode="dark"] .sitebar select {
+    background: #24292c;
+    border-color: #3a4046;
+    color: #d5d9dc;
+}
+
+/* Green bar */
+html[data-theme="default"][data-mode="dark"] .topbar nav a.active {
+    background: #e3e6e8;
+    color: #2f5a3b;
+}
+
+/* Suggestions, pickers, menus */
+html[data-theme="default"][data-mode="dark"] :is(.suggestions, .picker-results, .note-menu) {
+    background: var(--panel);
+    border-color: var(--border);
+    box-shadow: 0 6px 18px #000a;
+}
+html[data-theme="default"][data-mode="dark"] :is(.suggestions li a, .picker-results li, .word-items li, .relations td) {
+    border-bottom-color: #2e3438;
+}
+html[data-theme="default"][data-mode="dark"] :is(.suggestions li a.active, .picker-results li.active, .word-items li.selected, .note-menu button:hover, .pick-row:hover) {
+    background: #2b3a31 !important;
+}
+html[data-theme="default"][data-mode="dark"] :is(.word-items li:hover, .language-card:hover, .list-row .picked) {
+    background: #26302a;
+}
+html[data-theme="default"][data-mode="dark"] :is(.badge, .pos-tag, .suggestions .pos-tag) {
+    background: #2e3438;
+    color: #b4bcc3;
+}
+html[data-theme="default"][data-mode="dark"] :is(.field > label, .field > .label) { color: #aab1b7; }
+
+/* Form controls and buttons */
+html[data-theme="default"][data-mode="dark"] :is(input, select, textarea) {
+    background: #1b1e20;
+    color: var(--text);
+    border-color: var(--border);
+}
+html[data-theme="default"][data-mode="dark"] :is(input, select, textarea):disabled,
+html[data-theme="default"][data-mode="dark"] fieldset.locked-fields select:disabled,
+html[data-theme="default"][data-mode="dark"] .field select:disabled {
+    background: #24292c;
+    color: #8b939b;
+}
+html[data-theme="default"][data-mode="dark"] button {
+    background: #2a2f33;
+    border-color: var(--border);
+    color: var(--text);
+}
+html[data-theme="default"][data-mode="dark"] button:hover:not(:disabled) { background: #343a3f; }
+html[data-theme="default"][data-mode="dark"] button.primary,
+html[data-theme="default"][data-mode="dark"] .button-link {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+html[data-theme="default"][data-mode="dark"] button.primary:hover:not(:disabled),
+html[data-theme="default"][data-mode="dark"] .button-link:hover { background: #4a8a5d; }
+html[data-theme="default"][data-mode="dark"] .button-link.secondary {
+    background: transparent;
+    color: #8fcfa3;
+}
+html[data-theme="default"][data-mode="dark"] .button-link.secondary:hover { background: #2b3a31; }
+html[data-theme="default"][data-mode="dark"] button.danger { color: #ff8a8a; background: #2a2f33; }
+html[data-theme="default"][data-mode="dark"] .status.error { color: #ff8a8a; }
+html[data-theme="default"][data-mode="dark"] .status.ok { color: #7fcf98; }
+html[data-theme="default"][data-mode="dark"] dialog {
+    background: var(--panel);
+    color: var(--text);
+}
+html[data-theme="default"][data-mode="dark"] dialog::backdrop { background: #000a; }
+
+/* Dictionary: charts, family tree, heat map */
+html[data-theme="default"][data-mode="dark"] .viz {
+    --surface: #1b1e20;
+    --ink: #f1f3f4;
+    --ink-2: #b4bcc3;
+    --grid: #30363b;
+    --series-other: #7d8389;
+    --series-none: #4a5057;
+}
+html[data-theme="default"][data-mode="dark"] .bar-track { background: #2c3135; }
+html[data-theme="default"][data-mode="dark"] :is(.family-scroll, .lore-aside) { background: #1b1e20; }
+html[data-theme="default"][data-mode="dark"] .family-graph .edge-line { stroke: #aab1b7; }
+html[data-theme="default"][data-mode="dark"] .family-graph marker path { fill: #aab1b7; }
+html[data-theme="default"][data-mode="dark"] .family-key :is(line, path) { stroke: #aab1b7; }
+html[data-theme="default"][data-mode="dark"] .family-graph .family-edge:hover .edge-line { stroke: #8fb4ff; }
+html[data-theme="default"][data-mode="dark"] .family-graph .family-node rect { stroke: #ffffff30; }
+html[data-theme="default"][data-mode="dark"] .family-graph .family-node:hover rect,
+html[data-theme="default"][data-mode="dark"] .heatmap rect.hm-cell:hover { stroke: #fff; }
+html[data-theme="default"][data-mode="dark"] .family-graph .edge-label rect { fill: #1f2326; stroke: #3a4046; }
+html[data-theme="default"][data-mode="dark"] .family-graph .edge-label text { fill: #e3e6e8; }
+html[data-theme="default"][data-mode="dark"] .columns .hit:hover { fill: #ffffff18; }
+html[data-theme="default"][data-mode="dark"] .heat-blank-swatch { background: #24292c; border-color: #3a4046; }
+
+/* Editors and lore articles */
+html[data-theme="default"][data-mode="dark"] :is(.rich-editor, .pick-row) { background: var(--panel); }
+html[data-theme="default"][data-mode="dark"] .rich-toolbar { background: #24292c; }
+html[data-theme="default"][data-mode="dark"] .rich-area:focus { box-shadow: inset 0 0 0 2px #35553f; }
+html[data-theme="default"][data-mode="dark"] .lore-body blockquote { background: #24292c; color: #c9ced2; }
+html[data-theme="default"][data-mode="dark"] :is(.lore-body th, .lore-body pre) { background: #262b2e; }
+html[data-theme="default"][data-mode="dark"] .search-snippet mark { background: #6b5d00; color: #fff; }
+
+/* Home page */
+html[data-theme="default"][data-mode="dark"] body > p { color: var(--muted); }
+html[data-theme="default"][data-mode="dark"] .card { background: var(--panel); border-color: var(--border); box-shadow: 0 2px 5px #0006; }
+html[data-theme="default"][data-mode="dark"] .card:hover { border-color: #6aa37c; }
+html[data-theme="default"][data-mode="dark"] .card span { color: var(--muted); }
+html[data-theme="default"][data-mode="dark"] .site-search input { background: #1b1e20; border-color: var(--border); }
+html[data-theme="default"][data-mode="dark"] .site-search button { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Calendar */
+html[data-theme="default"][data-mode="dark"] .month { background: var(--panel); border-color: var(--border); box-shadow: 0 2px 5px #0006; }
+html[data-theme="default"][data-mode="dark"] :is(.month-info, .legend, .timeline-years, .send-summary, .note-book, #notesDialogSub, .date-field, .year-pick legend) { color: #9aa3ab; }
+html[data-theme="default"][data-mode="dark"] :is(.week-label, .weekday, .gregorian-date, .short-month, .year-pick-or, .note-book-field small, .notes-empty) { color: #8b939b; }
+html[data-theme="default"][data-mode="dark"] :is(.week, .note, .year-pick) { border-color: #30363b; }
+html[data-theme="default"][data-mode="dark"] .day { background: #262b2e; }
+html[data-theme="default"][data-mode="dark"] .intercalary { background: #24332a; }
+html[data-theme="default"][data-mode="dark"] .day.today { background-color: #6b5800; border-color: #d4a900; color: #fff; }
+html[data-theme="default"][data-mode="dark"] .day.today .gregorian-date { color: #ffe9a0; }
+html[data-theme="default"][data-mode="dark"] .day[data-day]:hover { outline-color: #6aa37c; }
+html[data-theme="default"][data-mode="dark"] .era-segment { background: #2a4a63; border-right-color: var(--bg); }
+html[data-theme="default"][data-mode="dark"] .note { background: #24292c; }
+html[data-theme="default"][data-mode="dark"] .note-menu-button { color: #b4bcc3; }
+html[data-theme="default"][data-mode="dark"] .note-menu-button[aria-expanded="true"] { background: #343a3f; border-color: var(--border); }
+html[data-theme="default"][data-mode="dark"] .note-menu { border-color: #4a5057; }
+html[data-theme="default"][data-mode="dark"] :is(#notesDialog, #sendDialog, #bulkDialog) { border-color: #4a5057; }
+html[data-theme="default"][data-mode="dark"] :is(#notesDialog, #sendDialog, #bulkDialog)::backdrop { background: #000a; }
+html[data-theme="default"][data-mode="dark"] .date-field input { color: var(--text); }
+html[data-theme="default"][data-mode="dark"] .bulk-result { background: #24332a; border-color: #35553f; }
+html[data-theme="default"][data-mode="dark"] .send-preview { background: #262b2e; }
+html[data-theme="default"][data-mode="dark"] .send-preview.error { background: #3a2020; color: #ff9a9a; }
+html[data-theme="default"][data-mode="dark"] .notes-error { color: #ff8a8a; }
+
+
+/* ==================================================================
+   Neumorphic (dark): the same recipe with a dark palette
+   ================================================================== */
+
+html[data-theme="neumorph"][data-mode="dark"] {
+    color-scheme: dark;
+
+    --np-bg: #2c2f36;
+    --np-fg: #e4e6ea;
+    --np-shadow: #1e2025;
+    --np-light: #3a3e47;
+    --np-primary: #7aa5ee;
+    --np-accent: #e6af2e;
+    --np-accent-text: #f0c24b;
+    --np-warn: #ff6b78;
+
+    --np-focus-ring: 0 0 0 2px rgba(122, 165, 238, 0.5);
+
+    --muted: #a0a7b2;
+    --border: #3a3e47;
+}
+
+/* The era year on the calendar is hard-coded black. */
+html[data-mode="dark"] .era-entry erayear { color: #fff; }
+
+html[data-theme="neumorph"][data-mode="dark"] dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+html[data-theme="neumorph"][data-mode="dark"] ::placeholder { color: #8a909b; }
+html[data-theme="neumorph"][data-mode="dark"] :is(input, select, textarea):disabled { color: #8a909b; }
+html[data-theme="neumorph"][data-mode="dark"] :is(.hint-block, .placeholder-box) { border-color: #484d58; }
+html[data-theme="neumorph"][data-mode="dark"] .status.ok { color: #6fd195; }
+html[data-theme="neumorph"][data-mode="dark"] .rich-area:focus { box-shadow: inset 0 0 0 2px rgba(122, 165, 238, 0.45); }
+html[data-theme="neumorph"][data-mode="dark"] .search-snippet mark { background: rgba(230, 175, 46, 0.4); color: inherit; }
+html[data-theme="neumorph"][data-mode="dark"] .viz { --grid: #3a3e47; --ink: #f1f3f6; --ink-2: #b6bcc7; }
+
+}
