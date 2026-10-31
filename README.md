@@ -19,6 +19,8 @@ npm install   # first time only
 npm start
 ```
 
+Node 20 or newer is needed (tried on Node 22 and 26). The one dependency with a compiled part is `better-sqlite3`, and it is built for the version of Node that installed it: **after updating Node, run `npm rebuild better-sqlite3`** (or `npm run rebuild`) in the project folder. Without that, the server says so and stops (it would otherwise complain about a `NODE_MODULE_VERSION` mismatch).
+
 Then open <http://localhost:3000> (set `PORT` to change it). The server only listens on localhost.
 
 ## Data

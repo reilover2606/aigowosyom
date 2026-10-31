@@ -1,7 +1,7 @@
 "use strict";
 
 const config = require("./lib/config");
-const { RESTART_CODE } = require("./lib/publish-codes");
+const { RESTART_CODE, SETUP_PROBLEM_CODE } = require("./lib/publish-codes");
 
 // A public instance runs under a small supervisor, so that when a newly
 // published database has been swapped in, the worker can exit and be started
@@ -17,6 +17,9 @@ if (config.PUBLIC && !process.env.AIGOWOSYOM_WORKER) {
             env: { ...process.env, AIGOWOSYOM_WORKER: "1" }
         });
         child.on("exit", (code) => {
+            if (code === SETUP_PROBLEM_CODE) {
+                process.exit(code); // it has said what is wrong; starting it again won't help
+            }
             if (!stopping) {
                 setTimeout(start, code === RESTART_CODE ? 0 : 2000);
             }
