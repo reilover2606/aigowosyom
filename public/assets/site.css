@@ -69,9 +69,21 @@ h1 {
     font-weight: bold;
 }
 
-.sitebar .sitebar-home {
-    margin-right: auto;
-    letter-spacing: 0.02em;
+.sitebar .theme-switch {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto; /* far right */
+}
+
+.sitebar select {
+    padding: 1px 4px;
+    border: 1px solid #cfd2ca;
+    border-radius: 3px;
+    background: #fff;
+    color: #3d413a;
+    font: inherit;
+    font-size: 12px;
 }
 
 /* On pages whose own layout has a top margin (the home page, the calendar),

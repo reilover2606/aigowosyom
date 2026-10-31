@@ -953,8 +953,8 @@
                 editor.element
             ),
 
-            draft.era ? eraNotesPanel(draft.era) : null,
-            draft.book ? bookNotesPanel(draft.book) : null,
+            ...(draft.era ? [eraNotesPanel(draft.era)] : []),
+            ...(draft.book ? [bookNotesPanel(draft.book)] : []),
 
             h("div", { class: "form-actions" },
                 h("button", { type: "button", class: "primary", onclick: save }, "Save"),

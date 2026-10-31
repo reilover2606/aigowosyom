@@ -1,0 +1,758 @@
+/* Neumorphic theme.
+ *
+ * Recreates the look of Neumorph.scss by Chema Alfonso (MIT,
+ * https://github.com/ChemaAlfonso/neumorph.scss) in plain CSS, without its
+ * Bootstrap/SCSS build. The recipe is the library's:
+ *
+ *   - the page and every element share one soft background;
+ *   - a RAISED element has a dark shadow down-right and a white shadow
+ *     up-left (6px offset, 16px blur) and a thin white border;
+ *   - hovering or pressing it swaps in the INSET (pressed) version;
+ *   - gold marks hover/active states, blue is the primary color, red warns.
+ *
+ * The library's light-theme values are used as they are: #f2f3f7 background,
+ * #1f2224 foreground, #dde4ef shadow, #fff light, #3066be primary,
+ * #e6af2e accent, #d72638 warn, 5px radius, 0.3s transitions. Two adaptations:
+ * gold text is darkened (#8a5f00) so it stays readable on the light background,
+ * and the site keeps its own typography rule (language words sans-serif,
+ * everything else serif) instead of the library's Roboto.
+ *
+ * Everything here is scoped to html[data-theme="neumorph"], so the default
+ * theme is untouched. Smaller controls use smaller shadows (-sm, -xs) so dense
+ * screens stay legible; it is the same recipe at a smaller scale.
+ */
+
+html[data-theme="neumorph"] {
+    color-scheme: light;
+
+    --np-bg: #f2f3f7;
+    --np-fg: #1f2224;
+    --np-shadow: #dde4ef;
+    --np-light: #ffffff;
+    --np-primary: #3066be;
+    --np-accent: #e6af2e;
+    --np-accent-text: #8a5f00;
+    --np-warn: #d72638;
+    --np-radius: 5px;
+    --np-speed: 0.3s;
+
+    --np-raised: 6px 6px 16px 0 var(--np-shadow), -6px -6px 16px 0 var(--np-light);
+    --np-raised-sm: 3px 3px 8px 0 var(--np-shadow), -3px -3px 8px 0 var(--np-light);
+    --np-raised-xs: 2px 2px 5px 0 var(--np-shadow), -2px -2px 5px 0 var(--np-light);
+    --np-pressed: inset 6px 6px 16px 0 var(--np-shadow), inset -6px -6px 16px 0 var(--np-light);
+    --np-pressed-sm: inset 3px 3px 8px 0 var(--np-shadow), inset -3px -3px 8px 0 var(--np-light);
+    --np-pressed-xs: inset 2px 2px 5px 0 var(--np-shadow), inset -2px -2px 5px 0 var(--np-light);
+
+    --np-focus-ring: 0 0 0 2px rgba(48, 102, 190, 0.4);
+
+    /* The site's own tokens, pointed at this palette. */
+    --bg: var(--np-bg);
+    --panel: var(--np-bg);
+    --text: var(--np-fg);
+    --link: var(--np-primary);
+    --missing: var(--np-warn);
+    --muted: #666d78;
+    --border: #e0e5ee;
+}
+
+/* ------------------------------------------------------------------
+   Base
+   ------------------------------------------------------------------ */
+
+html[data-theme="neumorph"],
+html[data-theme="neumorph"] body {
+    background: var(--np-bg);
+    color: var(--np-fg);
+}
+
+html[data-theme="neumorph"] a {
+    color: var(--np-primary);
+    transition: color var(--np-speed);
+}
+
+html[data-theme="neumorph"] a:hover {
+    color: var(--np-accent-text);
+}
+
+html[data-theme="neumorph"] a.missing {
+    color: var(--np-warn);
+}
+
+html[data-theme="neumorph"] dialog::backdrop {
+    background: rgba(31, 34, 36, 0.35);
+}
+
+html[data-theme="neumorph"] ::placeholder {
+    color: #8a909b;
+}
+
+/* ------------------------------------------------------------------
+   The slim bar along the top
+   ------------------------------------------------------------------ */
+
+html[data-theme="neumorph"] .sitebar {
+    background: var(--np-bg);
+    border-bottom: none;
+    box-shadow: 0 6px 12px -8px var(--np-shadow);
+    color: var(--np-fg);
+}
+
+html[data-theme="neumorph"] .sitebar a {
+    padding: 4px 9px;
+    border-radius: var(--np-radius);
+    color: var(--np-fg);
+    transition: color var(--np-speed), box-shadow var(--np-speed);
+}
+
+html[data-theme="neumorph"] .sitebar a:hover {
+    color: var(--np-accent-text);
+    text-decoration: none;
+    box-shadow: var(--np-pressed-xs);
+}
+
+html[data-theme="neumorph"] .sitebar a[aria-current="page"] {
+    color: var(--np-accent-text);
+    box-shadow: var(--np-pressed-xs);
+}
+
+html[data-theme="neumorph"] .sitebar select {
+    border: 1px solid var(--np-light);
+    background: var(--np-bg);
+    color: var(--np-fg);
+    box-shadow: var(--np-pressed-xs);
+}
+
+/* The dictionary / lore header bar (green in the default theme). */
+
+html[data-theme="neumorph"] .topbar {
+    background: var(--np-bg);
+    color: var(--np-fg);
+    box-shadow: 0 8px 16px -8px var(--np-shadow);
+}
+
+html[data-theme="neumorph"] .topbar a {
+    color: var(--np-fg);
+}
+
+html[data-theme="neumorph"] .topbar .brand {
+    font-weight: bold;
+}
+
+html[data-theme="neumorph"] .topbar nav a {
+    border: 1px solid var(--np-light);
+    box-shadow: var(--np-raised-xs);
+    transition: color var(--np-speed), box-shadow var(--np-speed);
+}
+
+html[data-theme="neumorph"] .topbar nav a:hover {
+    background: transparent;
+    color: var(--np-accent-text);
+    box-shadow: var(--np-pressed-xs);
+}
+
+html[data-theme="neumorph"] .topbar nav a.active {
+    background: var(--np-bg);
+    color: var(--np-accent-text);
+    box-shadow: var(--np-pressed-xs);
+}
+
+/* ------------------------------------------------------------------
+   Raised surfaces: panels, cards and dialogs
+   ------------------------------------------------------------------ */
+
+/* (Dialog ids are listed apart from the classes: an id inside :is() would raise
+   the whole group's specificity and override the language-color rules below.) */
+html[data-theme="neumorph"] :is(.content, .panel, .chart-card, .month, .card, .lore-aside, dialog) {
+    background: var(--np-bg);
+    color: var(--np-fg);
+    border-color: var(--np-light);
+    box-shadow: var(--np-raised);
+}
+
+html[data-theme="neumorph"] #notesDialog,
+html[data-theme="neumorph"] #sendDialog,
+html[data-theme="neumorph"] #bulkDialog {
+    background: var(--np-bg);
+    color: var(--np-fg);
+    border-color: var(--np-light);
+    box-shadow: var(--np-raised);
+}
+
+html[data-theme="neumorph"] .content {
+    margin-top: 18px;
+    margin-bottom: 24px;
+    min-height: 0;
+    border-radius: 10px;
+}
+
+html[data-theme="neumorph"] :is(.language-card, .stat-tile, .note, .site-search) {
+    background: var(--np-bg);
+    border-color: var(--np-light);
+}
+
+html[data-theme="neumorph"] :is(.language-card, .stat-tile, .note) {
+    box-shadow: var(--np-raised-sm);
+}
+
+html[data-theme="neumorph"] :is(.language-card, .card) {
+    transition: box-shadow var(--np-speed), color var(--np-speed);
+}
+
+html[data-theme="neumorph"] :is(.language-card, .card):hover {
+    background: var(--np-bg);
+    border-color: var(--np-light);
+    box-shadow: var(--np-pressed-sm);
+}
+
+html[data-theme="neumorph"] .card:hover {
+    box-shadow: var(--np-pressed);
+}
+
+html[data-theme="neumorph"] .language-card-name,
+html[data-theme="neumorph"] .card h2 {
+    color: var(--np-fg);
+}
+
+/* Colored language/category identity survives the theme: the band across the
+   top of a page, the bar down a card's side. (border-color above reset them.) */
+html[data-theme="neumorph"] :is(.language-page, .entry-page) {
+    border-top-color: var(--lang-color);
+}
+
+html[data-theme="neumorph"] .language-card {
+    border-left-color: var(--lang-color, #6e7681);
+}
+
+html[data-theme="neumorph"] :is(.sidebar, .form-panel, .lore-aside) {
+    border-top-color: var(--lang-color, #6e7681);
+}
+
+html[data-theme="neumorph"] .language-page .stat-tile {
+    border-top-color: var(--lang-color);
+}
+
+/* ------------------------------------------------------------------
+   Buttons and button-like links
+   ------------------------------------------------------------------ */
+
+html[data-theme="neumorph"] :is(button, .button-link) {
+    background: var(--np-bg);
+    color: var(--np-fg);
+    border: 1px solid var(--np-light);
+    border-radius: var(--np-radius);
+    box-shadow: var(--np-raised-sm);
+    text-decoration: none;
+    transition: box-shadow var(--np-speed), color var(--np-speed);
+}
+
+html[data-theme="neumorph"] :is(button:hover:not(:disabled), button:active:not(:disabled), .button-link:hover) {
+    background: var(--np-bg);
+    color: var(--np-accent-text);
+    box-shadow: var(--np-pressed-sm);
+}
+
+html[data-theme="neumorph"] :is(button, .button-link, .tabs a, .letters a, .sort-control a, input, select, textarea):focus-visible {
+    outline: none;
+    box-shadow: var(--np-pressed-sm), var(--np-focus-ring);
+}
+
+html[data-theme="neumorph"] button:disabled {
+    background: var(--np-bg);
+    box-shadow: none;
+    opacity: 0.55;
+    cursor: default;
+}
+
+html[data-theme="neumorph"] button.primary {
+    background: var(--np-bg);
+    border-color: var(--np-light);
+    color: var(--np-primary);
+    font-weight: 600;
+}
+
+html[data-theme="neumorph"] button.primary:hover:not(:disabled) {
+    background: var(--np-bg);
+    color: var(--np-accent-text);
+}
+
+html[data-theme="neumorph"] button.danger {
+    color: var(--np-warn);
+}
+
+html[data-theme="neumorph"] .button-link {
+    color: var(--np-primary);
+    font-weight: 600;
+}
+
+html[data-theme="neumorph"] :is(.button-link.secondary, .button-link.small) {
+    background: var(--np-bg);
+    border-color: var(--np-light);
+    color: var(--np-fg);
+    font-weight: normal;
+}
+
+html[data-theme="neumorph"] :is(.button-link.secondary, .button-link.small):hover {
+    background: var(--np-bg);
+    color: var(--np-accent-text);
+}
+
+/* ------------------------------------------------------------------
+   Tabs, filter chips and sort links
+   ------------------------------------------------------------------ */
+
+html[data-theme="neumorph"] .tabs {
+    gap: 10px;
+    border-bottom: none;
+    margin-bottom: 16px;
+}
+
+html[data-theme="neumorph"] :is(.tabs a, .letters a, .sort-control a, .pager a) {
+    background: var(--np-bg);
+    color: var(--np-fg);
+    border: 1px solid var(--np-light);
+    border-radius: var(--np-radius);
+    box-shadow: var(--np-raised-xs);
+    text-decoration: none;
+    transition: box-shadow var(--np-speed), color var(--np-speed);
+}
+
+html[data-theme="neumorph"] .tabs a {
+    padding: 6px 16px;
+    margin-bottom: 0;
+}
+
+html[data-theme="neumorph"] :is(.tabs a, .letters a, .sort-control a, .pager a):hover {
+    background: var(--np-bg);
+    color: var(--np-accent-text);
+    box-shadow: var(--np-pressed-xs);
+}
+
+/* The selected one is pressed in, with the language's color as a bar beneath. */
+html[data-theme="neumorph"] :is(.tabs a.active, .letters a.active, .sort-control a.active, .language-page .letters a.active) {
+    background: var(--np-bg);
+    border-color: var(--np-light);
+    color: var(--np-accent-text);
+    font-weight: bold;
+    box-shadow: var(--np-pressed-xs), inset 0 -3px 0 0 var(--lang-color, var(--np-accent));
+}
+
+html[data-theme="neumorph"] .language-page .tabs a.active {
+    border-top: 1px solid var(--np-light);
+}
+
+html[data-theme="neumorph"] .tab-aside {
+    margin-left: auto;
+}
+
+/* ------------------------------------------------------------------
+   Form fields: pressed in, like a well
+   ------------------------------------------------------------------ */
+
+html[data-theme="neumorph"] :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not([type="color"]) {
+    background: var(--np-bg);
+    color: var(--np-fg);
+    border: 1px solid var(--np-light);
+    border-radius: var(--np-radius);
+    box-shadow: var(--np-pressed-sm);
+    transition: box-shadow var(--np-speed);
+}
+
+html[data-theme="neumorph"] :is(input, select, textarea):disabled {
+    background: var(--np-bg);
+    color: #727985;
+    box-shadow: var(--np-pressed-xs);
+}
+
+html[data-theme="neumorph"] input[type="color"] {
+    border: 1px solid var(--np-light);
+    border-radius: var(--np-radius);
+    background: var(--np-bg);
+    box-shadow: var(--np-raised-xs);
+}
+
+html[data-theme="neumorph"] .field > label,
+html[data-theme="neumorph"] .field > .label {
+    color: var(--np-fg);
+}
+
+html[data-theme="neumorph"] .field .hint,
+html[data-theme="neumorph"] .row .hint {
+    color: var(--muted);
+}
+
+/* ------------------------------------------------------------------
+   Lists and the editors
+   ------------------------------------------------------------------ */
+
+html[data-theme="neumorph"] .word-items {
+    background: var(--np-bg);
+    border: 1px solid var(--np-light);
+    border-radius: 8px;
+    box-shadow: var(--np-pressed-sm);
+}
+
+html[data-theme="neumorph"] .word-items li {
+    border-bottom: 1px solid var(--border);
+    transition: color var(--np-speed), box-shadow var(--np-speed);
+}
+
+html[data-theme="neumorph"] .word-items li:hover {
+    background: transparent;
+    color: var(--np-accent-text);
+}
+
+html[data-theme="neumorph"] .word-items li.selected {
+    background: var(--np-bg);
+    border-radius: var(--np-radius);
+    box-shadow: var(--np-raised-xs);
+    color: var(--np-accent-text);
+}
+
+html[data-theme="neumorph"] .word-items .sub,
+html[data-theme="neumorph"] .list-footer {
+    color: var(--muted);
+}
+
+html[data-theme="neumorph"] .list-row .picked {
+    background: var(--np-bg);
+    border-color: var(--np-light);
+    box-shadow: var(--np-pressed-xs);
+}
+
+html[data-theme="neumorph"] :is(.picker-results, .suggestions, .note-menu) {
+    background: var(--np-bg);
+    border: 1px solid var(--np-light);
+    box-shadow: var(--np-raised);
+}
+
+html[data-theme="neumorph"] :is(.picker-results li, .suggestions li a) {
+    border-bottom-color: var(--border);
+    transition: color var(--np-speed), box-shadow var(--np-speed);
+}
+
+html[data-theme="neumorph"] :is(.picker-results li:hover, .picker-results li.active, .suggestions li a:hover, .suggestions li a.active, .note-menu button:hover) {
+    background: transparent;
+    color: var(--np-accent-text);
+    box-shadow: var(--np-pressed-xs);
+}
+
+html[data-theme="neumorph"] .suggestions .sug-all a {
+    color: var(--np-primary);
+}
+
+html[data-theme="neumorph"] :is(.hint-block, .placeholder-box) {
+    background: transparent;
+    border-color: #c9d0dc;
+    color: var(--muted);
+}
+
+html[data-theme="neumorph"] .form-actions {
+    border-top-color: var(--border);
+}
+
+html[data-theme="neumorph"] .status.error {
+    color: var(--np-warn);
+}
+
+html[data-theme="neumorph"] .status.ok {
+    color: #1f7a45;
+}
+
+/* The lore editor's rich-text box: a well with a raised toolbar. */
+
+html[data-theme="neumorph"] .rich-editor {
+    background: var(--np-bg);
+    border: 1px solid var(--np-light);
+    border-radius: 8px;
+    box-shadow: var(--np-pressed-sm);
+}
+
+html[data-theme="neumorph"] .rich-toolbar {
+    background: transparent;
+    border-bottom: 1px solid var(--border);
+}
+
+html[data-theme="neumorph"] .table-tools {
+    border-left-color: var(--border);
+}
+
+html[data-theme="neumorph"] button.tool {
+    box-shadow: var(--np-raised-xs);
+}
+
+html[data-theme="neumorph"] button.tool.active {
+    background: var(--np-bg);
+    border-color: var(--np-light);
+    color: var(--np-accent-text);
+    box-shadow: var(--np-pressed-xs), inset 0 -3px 0 0 var(--lang-color, var(--np-accent));
+}
+
+html[data-theme="neumorph"] .rich-area {
+    background: transparent;
+}
+
+html[data-theme="neumorph"] .rich-area:focus {
+    box-shadow: inset 0 0 0 2px rgba(48, 102, 190, 0.35);
+}
+
+html[data-theme="neumorph"] .pick-row {
+    background: var(--np-bg) !important;
+    border: 1px solid var(--np-light);
+    box-shadow: var(--np-raised-xs);
+}
+
+html[data-theme="neumorph"] .pick-row:hover {
+    background: var(--np-bg) !important;
+    color: var(--np-accent-text);
+    box-shadow: var(--np-pressed-xs);
+}
+
+/* ------------------------------------------------------------------
+   Small labels
+   ------------------------------------------------------------------ */
+
+html[data-theme="neumorph"] :is(.badge, .pos-tag) {
+    background: var(--np-bg);
+    color: var(--muted);
+    box-shadow: var(--np-raised-xs);
+}
+
+/* Language / category badges keep their own color. */
+html[data-theme="neumorph"] .lang-tag {
+    box-shadow: 1px 1px 3px 0 var(--np-shadow);
+}
+
+html[data-theme="neumorph"] :is(a.lang-tag, .topbar a.lang-tag, .entry a.lang-tag, .content a.lang-tag) {
+    color: var(--lang-fg, #fff);
+}
+
+html[data-theme="neumorph"] .note-badge {
+    background: var(--np-primary);
+}
+
+/* ------------------------------------------------------------------
+   Article text (lore)
+   ------------------------------------------------------------------ */
+
+html[data-theme="neumorph"] .lore-body blockquote {
+    background: var(--np-bg);
+    color: var(--np-fg);
+    border-left-color: var(--lang-color, var(--np-accent));
+    border-radius: var(--np-radius);
+    box-shadow: var(--np-pressed-sm);
+}
+
+html[data-theme="neumorph"] .lore-body th {
+    background: var(--np-bg);
+    box-shadow: inset 0 -2px 0 0 var(--np-shadow);
+}
+
+html[data-theme="neumorph"] .lore-body pre {
+    background: var(--np-bg);
+    box-shadow: var(--np-pressed-sm);
+}
+
+html[data-theme="neumorph"] .search-snippet mark {
+    background: rgba(230, 175, 46, 0.35);
+}
+
+html[data-theme="neumorph"] .era-note-list li {
+    background: transparent;
+}
+
+/* ------------------------------------------------------------------
+   Charts and tables
+   ------------------------------------------------------------------ */
+
+html[data-theme="neumorph"] .viz {
+    --surface: var(--np-bg);
+    --grid: #dfe4ec;
+    --ink-2: #4a5059;
+}
+
+html[data-theme="neumorph"] .bar-track {
+    background: var(--np-bg);
+    box-shadow: var(--np-pressed-xs);
+}
+
+html[data-theme="neumorph"] .family-scroll {
+    background: var(--np-bg);
+    border-color: var(--np-light);
+    box-shadow: var(--np-pressed-sm);
+}
+
+html[data-theme="neumorph"] .family-graph .edge-label rect {
+    fill: var(--np-bg);
+    stroke: var(--np-shadow);
+}
+
+html[data-theme="neumorph"] .relations th,
+html[data-theme="neumorph"] .relations td {
+    border-bottom-color: var(--border);
+}
+
+html[data-theme="neumorph"] .heat-blank-swatch {
+    background: var(--np-bg);
+    border-color: var(--np-shadow);
+}
+
+/* ------------------------------------------------------------------
+   Home page
+   ------------------------------------------------------------------ */
+
+html[data-theme="neumorph"] .card {
+    border-color: var(--np-light);
+    border-radius: 10px;
+}
+
+/* The home page's subtitle and card captions (its subtitle is a direct child of body). */
+html[data-theme="neumorph"] :is(body > p, .card span) {
+    color: var(--muted);
+}
+
+html[data-theme="neumorph"] .site-search {
+    box-shadow: none;
+}
+
+html[data-theme="neumorph"] .site-search button {
+    background: var(--np-bg);
+    color: var(--np-primary);
+    border: 1px solid var(--np-light);
+    box-shadow: var(--np-raised-sm);
+    font-weight: 600;
+}
+
+html[data-theme="neumorph"] .site-search button:hover {
+    background: var(--np-bg);
+    color: var(--np-accent-text);
+    box-shadow: var(--np-pressed-sm);
+}
+
+/* ------------------------------------------------------------------
+   The calendar
+   ------------------------------------------------------------------ */
+
+html[data-theme="neumorph"] :is(.month-info, .legend, .timeline-years, .send-summary, .note-book, .week-label, .weekday, .gregorian-date, .note-book-field small, .year-pick legend, .year-pick-or, .notes-empty, .date-field),
+html[data-theme="neumorph"] #notesDialogSub {
+    color: var(--muted);
+}
+
+html[data-theme="neumorph"] .week {
+    border-top-color: var(--border);
+}
+
+html[data-theme="neumorph"] .day {
+    background: var(--np-bg);
+    box-shadow: var(--np-raised-xs);
+    transition: box-shadow var(--np-speed), color var(--np-speed);
+}
+
+html[data-theme="neumorph"] .day.empty {
+    background: transparent;
+    box-shadow: none;
+}
+
+html[data-theme="neumorph"] .day.intercalary {
+    background: var(--np-bg);
+    box-shadow: var(--np-pressed-xs);
+}
+
+html[data-theme="neumorph"] .day[data-day]:hover {
+    outline: none;
+    box-shadow: var(--np-pressed-xs);
+    color: var(--np-accent-text);
+}
+
+html[data-theme="neumorph"] .day.today {
+    background: var(--np-bg);
+    border-color: var(--np-accent);
+    box-shadow: var(--np-pressed-xs);
+    color: var(--np-fg);
+}
+
+html[data-theme="neumorph"] .day.today .gregorian-date {
+    color: var(--np-accent-text);
+}
+
+html[data-theme="neumorph"] .era-segment {
+    background: var(--np-bg);
+    border-right-color: transparent;
+    border-radius: var(--np-radius);
+    box-shadow: var(--np-raised-xs);
+    filter: none;
+    transition: box-shadow var(--np-speed);
+}
+
+html[data-theme="neumorph"] .era-segment:hover {
+    filter: none;
+    box-shadow: var(--np-pressed-xs);
+}
+
+html[data-theme="neumorph"] .timeline-bar {
+    gap: 3px;
+}
+
+html[data-theme="neumorph"] .note {
+    border-color: var(--np-light);
+}
+
+html[data-theme="neumorph"] .note-menu-button {
+    background: transparent;
+    box-shadow: none;
+    color: var(--np-fg);
+}
+
+html[data-theme="neumorph"] .note-menu-button:hover,
+html[data-theme="neumorph"] .note-menu-button[aria-expanded="true"] {
+    background: var(--np-bg);
+    border-color: var(--np-light);
+    box-shadow: var(--np-pressed-xs);
+}
+
+html[data-theme="neumorph"] .note-menu button {
+    box-shadow: none;
+    border: none;
+    background: transparent;
+}
+
+html[data-theme="neumorph"] :is(.notes-info, .bulk-result, .send-preview) {
+    background: var(--np-bg);
+    border: none;
+    color: var(--np-fg);
+    box-shadow: var(--np-pressed-sm);
+}
+
+html[data-theme="neumorph"] :is(.send-preview.error, .notes-error) {
+    color: var(--np-warn);
+}
+
+html[data-theme="neumorph"] .year-pick {
+    border: none;
+    box-shadow: var(--np-pressed-xs);
+}
+
+html[data-theme="neumorph"] .date-field select,
+html[data-theme="neumorph"] .date-field input {
+    color: var(--np-fg);
+}
+
+/* ------------------------------------------------------------------
+   Printing and reduced motion: no theme
+   ------------------------------------------------------------------ */
+
+@media print {
+    html[data-theme="neumorph"],
+    html[data-theme="neumorph"] body {
+        background: #fff;
+    }
+
+    html[data-theme="neumorph"] * {
+        box-shadow: none !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html[data-theme="neumorph"] * {
+        transition: none !important;
+    }
+}
