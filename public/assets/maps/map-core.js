@@ -460,34 +460,39 @@
                 star: Boolean(feature.get("capital"))
             });
         };
-        // A place's name is sized by what it is (a capital's is largest, a village's smallest), as a
-        // share of the map, so it grows with the map as you zoom and appears when it is big enough
-        // to read. Like the state names it fades as it gets large, but only well after the state
-        // names do, since a place is what you zoom in to look at. A selected place always shows.
-        const PLACE_SIZE = { capital: 1, city: 0.85, port: 0.65, fortress: 0.6, town: 0.6, landmark: 0.5, ruin: 0.45, village: 0.4, other: 0.45 };
+        // A place's name stays small at every zoom (a capital's a little larger than a village's),
+        // and is only shown, fading in, once the state that holds the place fills most of the
+        // screen: from PLACE_SHOW_FROM of it to PLACE_SHOW_FULL. A selected place always shows.
+        const PLACE_FONT = { capital: 14, city: 13, port: 12, fortress: 12, town: 12, landmark: 12, ruin: 11, village: 11, other: 11 };
+        const PLACE_SHOW_FROM = 0.6;
+        const PLACE_SHOW_FULL = 0.8;
         const pointStyle = (feature, resolution) => {
             const chosen = selectedIs("point", feature.get("id"));
-            const units = Math.max(map.width, map.height) * 0.018 * (PLACE_SIZE[feature.get("kind")] || 0.45);
-            let px = units / resolution;
-            let alpha = nameOpacity(px / 2);
+            const size = PLACE_FONT[feature.get("kind")] || 11;
+            let alpha = 0;
+            const screen = view.ol && view.ol.getSize();
+            const home = feature.get("home"); // [width, height] in map units of the state holding it
+            if (screen && home) {
+                const share = Math.max(home[0] / (screen[0] * resolution), home[1] / (screen[1] * resolution));
+                alpha = Math.min(1, Math.max(0, (share - PLACE_SHOW_FROM) / (PLACE_SHOW_FULL - PLACE_SHOW_FROM)));
+            }
             if (chosen) {
-                px = Math.max(px, 13);
                 alpha = 1;
             }
-            const size = Math.round(Math.min(px, 40));
+            const fade = Math.round(alpha * 10) / 10;
             return new ol.style.Style({
                 image: new ol.style.Circle({
                     radius: chosen ? 8 : 5.5,
                     fill: new ol.style.Fill({ color: chosen ? colors.accent : colors.point }),
                     stroke: new ol.style.Stroke({ color: "#ffffff", width: 2 })
                 }),
-                text: alpha > 0
+                text: fade > 0
                     ? new ol.style.Text({
                         text: feature.get("name"),
                         font: `${size}px ${colors.serif}`,
                         offsetY: -(10 + size * 0.7),
-                        fill: new ol.style.Fill({ color: withOpacity(colors.label, Math.round(alpha * 20) / 20) }),
-                        stroke: new ol.style.Stroke({ color: withOpacity(colors.halo, Math.round(alpha * 20) / 20), width: Math.max(3, size / 4) }),
+                        fill: new ol.style.Fill({ color: withOpacity(colors.label, fade) }),
+                        stroke: new ol.style.Stroke({ color: withOpacity(colors.halo, fade), width: 3.5 }),
                         overflow: false
                     })
                     : undefined
@@ -609,8 +614,22 @@
 
             rebuildStates();
 
+            // The state that holds each place (the smallest, if shapes overlap), for when its name shows.
+            const shapes = next.states.filter((st) => st.polygons.length).map((st) => {
+                const polygons = stateCoordinates(st.polygons, view.vmap).map((coordinates) => new ol.geom.Polygon(coordinates));
+                const box = ol.extent.createEmpty();
+                polygons.forEach((polygon) => ol.extent.extend(box, polygon.getExtent()));
+                return { polygons, size: [box[2] - box[0], box[3] - box[1]] };
+            });
+
             for (const p of next.points) {
-                const feature = new ol.Feature({ geometry: new ol.geom.Point([p.x, p.y]), id: p.id, name: p.name, kind: p.kind });
+                const holder = shapes
+                    .filter((shape) => shape.polygons.some((polygon) => polygon.intersectsCoordinate([p.x, p.y])))
+                    .sort((a, b) => a.size[0] * a.size[1] - b.size[0] * b.size[1])[0];
+                const feature = new ol.Feature({
+                    geometry: new ol.geom.Point([p.x, p.y]), id: p.id, name: p.name, kind: p.kind,
+                    home: holder ? holder.size : null
+                });
                 feature.setId(`point-${p.id}`);
                 sources.points.addFeature(feature);
             }
