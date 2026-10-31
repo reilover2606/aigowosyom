@@ -13,6 +13,7 @@
     --map-label-halo: rgba(255, 255, 255, 0.85);
     --map-point: #7a1f1f;
     --map-accent: #d4a900;
+    --map-water-label: #35566f;
 }
 
 html[data-mode="dark"] {
@@ -27,6 +28,7 @@ html[data-mode="dark"] {
     --map-label-halo: rgba(20, 22, 24, 0.85);
     --map-point: #ff8f7a;
     --map-accent: #f0c24b;
+    --map-water-label: #9fc2dc;
 }
 
 html[data-theme="neumorph"] {
@@ -346,4 +348,21 @@ html[data-theme="neumorph"][data-mode="dark"] {
     margin-right: 6px;
     border-radius: 3px;
     vertical-align: -1px;
+}
+
+.map-side .stats {
+    margin: 10px 0;
+    padding-top: 6px;
+    border-top: 1px solid var(--border, #e3e5e8);
+}
+
+.map-side .stats h4,
+.map-info .stats h3 {
+    margin: 0 0 4px;
+    font-size: 0.95em;
+}
+
+.map-side .stats p,
+.map-info .stats p {
+    margin: 2px 0;
 }

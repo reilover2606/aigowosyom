@@ -129,16 +129,39 @@ function notesSectionHtml({ heading, intro, emptyText, groups, showBook = false 
     return `<section class="era-notes"><h2>${esc(heading)}</h2>${intro}${body}</section>`;
 }
 
+const STATUS_LABEL = { capital: "capital state", province: "province", vassal: "vassal", march: "march", territory: "territory" };
+
 // The clients of a superstate, as a nested list (generated from the map, so it
-// always agrees with it).
+// always agrees with it), each with its status.
 function clientListHtml(clients) {
     return `<ul class="state-clients-list">${clients
         .map(
-            (c) => `<li>${c.url ? `<a href="${esc(c.url)}">${esc(c.name)}</a>` : esc(c.name)}${
+            (c) => `<li>${c.url ? `<a href="${esc(c.url)}">${esc(c.name)}</a>` : esc(c.name)} <span class="muted">— ${STATUS_LABEL[c.status] || "province"}</span>${
                 c.clients.length ? clientListHtml(c.clients) : ""
             }</li>`
         )
         .join("")}</ul>`;
+}
+
+// Area, border length and neighbours, measured off the map.
+function stateStatsHtml(info) {
+    const stats = info.stats;
+
+    if (!stats || !(stats.area_sq_mi > 0)) {
+        return "";
+    }
+
+    const neighbors = stats.neighbors.length
+        ? `<p>Neighbours, with the length of border they share:</p><ul>${stats.neighbors
+              .map((n) => `<li>${n.url ? `<a href="${esc(n.url)}">${esc(n.name)}</a>` : esc(n.name)} <span class="muted">— about ${maps.approx(n.border_mi)} mi</span></li>`)
+              .join("")}</ul>`
+        : `<p>No other state shares a border with it.</p>`;
+
+    return `<section class="state-stats"><h2>On the map</h2>
+        <p>Area: about ${maps.approx(stats.area_sq_mi)} square miles.</p>
+        <p>Border: about ${maps.approx(stats.perimeter_mi)} miles long.</p>
+        ${neighbors}
+        <p class="muted">Measured off the map as drawn, so only approximate.</p></section>`;
 }
 
 // The notes inside an era.
@@ -192,13 +215,14 @@ function articlePage(res, category, page) {
     const stateLine = stateInfo
         ? `<p class="era-span">A ${stateInfo.is_group ? "superstate" : "state"} on the map <a href="/maps/${encodeURIComponent(stateInfo.map_slug)}?state=${stateInfo.id}">${esc(stateInfo.map_name)}</a>${
               stateInfo.parent
-                  ? ` · part of ${stateInfo.parent.url ? `<a href="${esc(stateInfo.parent.url)}">${esc(stateInfo.parent.name)}</a>` : esc(stateInfo.parent.name)}`
+                  ? ` · ${STATUS_LABEL[stateInfo.status] || "part"} of ${stateInfo.parent.url ? `<a href="${esc(stateInfo.parent.url)}">${esc(stateInfo.parent.name)}</a>` : esc(stateInfo.parent.name)}`
                   : ""
           }</p>`
         : "";
     const clientsSection = stateInfo && stateInfo.is_group && stateInfo.clients.length
         ? `<section class="state-clients"><h2>Client states</h2>${clientListHtml(stateInfo.clients)}</section>`
         : "";
+    const statsSection = stateInfo ? stateStatsHtml(stateInfo) : "";
     const era = page.era_start_year !== null ? eras.eraNotes(page.era_start_year) : null;
     const eraSpan = era
         ? `<p class="era-span">${
@@ -244,6 +268,7 @@ function articlePage(res, category, page) {
             }
             ${era ? eraNotesHtml(era) : ""}
             ${clientsSection}
+            ${statsSection}
             ${book ? bookNotesHtml(book) : ""}
         </article>
         ${aside}

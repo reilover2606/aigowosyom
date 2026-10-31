@@ -51,21 +51,36 @@
         if (selection.type === "state") {
             const s = bundle.states.find((x) => x.id === selection.id);
             const parent = s.parent_id ? bundle.states.find((x) => x.id === s.parent_id) : null;
-            const clients = bundle.states.filter((x) => x.parent_id === s.id).sort((a, b) => a.name.localeCompare(b.name));
+            const clients = bundle.states.filter((x) => x.parent_id === s.id)
+                .sort((a, b) => (b.status === "capital") - (a.status === "capital") || a.name.localeCompare(b.name));
+            const statusOf = (x) => MapCore.STATUS_NAMES[x.status || "province"];
+            const stats = s.stats && s.stats.area_sq_mi > 0 ? s.stats : null;
             return el("div", {},
                 el("h2", {}, el("span", { class: "swatch", style: `background:${s.color}` }),
                     el("span", { class: `state-name${s.label_sans ? " sans conlang" : ""}` }, s.name)),
                 parent
-                    ? el("p", { class: "muted" }, "Part of ",
+                    ? el("p", { class: "muted" }, `${statusOf(s)} of `,
                         el("a", { href: "#", onclick: (event) => { event.preventDefault(); choose({ type: "state", id: parent.id }, true); } }, parent.name))
                     : null,
                 s.page && s.page.excerpt ? el("p", {}, s.page.excerpt) : null,
                 s.page ? el("p", {}, el("a", { href: s.page.url }, "Read about it →")) : null,
+                stats
+                    ? el("div", { class: "stats" },
+                        el("h3", {}, "Statistics (approximate)"),
+                        el("p", {}, `Area about ${MapCore.approx(stats.area_sq_mi)} sq mi`),
+                        el("p", {}, `Border about ${MapCore.approx(stats.perimeter_mi)} mi long`),
+                        stats.neighbors.length
+                            ? el("div", {}, el("p", { class: "muted" }, "Neighbours:"),
+                                el("ul", {}, stats.neighbors.map((n) =>
+                                    el("li", {}, el("button", { type: "button", onclick: () => choose({ type: "state", id: n.id }, true) },
+                                        `${n.name} · ${MapCore.approx(n.border_mi)} mi`)))))
+                            : null)
+                    : null,
                 clients.length
                     ? el("div", {}, el("p", { class: "muted" }, "Made up of:"),
                         el("ul", {}, clients.map((c) =>
                             el("li", {}, el("button", { type: "button", onclick: () => choose({ type: "state", id: c.id }, true) },
-                                el("span", { class: "swatch", style: `background:${c.color}` }), c.name)))))
+                                el("span", { class: "swatch", style: `background:${c.color}` }), `${c.name} (${statusOf(c).toLowerCase()})`)))))
                     : null);
         }
 

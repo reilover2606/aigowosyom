@@ -25,7 +25,7 @@
         followBorders: true,
         coastSnap: true,
         multi: [], // states marked together (shift-click), for combining
-        layers: { tracers: true, land: true, lakes: true, rivers: true, states: true, labels: true, points: true },
+        layers: { tracers: true, land: true, lakes: true, rivers: true, waterNames: true, states: true, labels: true, points: true },
         interactions: []
     };
 
@@ -474,6 +474,7 @@
         land: "Click to add corners; double-click to finish. Hold Shift and drag to draw freehand.",
         lake: "Click to add corners; double-click to finish. Hold Shift and drag to draw freehand.",
         river: "Click to add points along the river; double-click to finish. Hold Shift and drag for freehand.",
+        ocean: "Draw a loose outline around the sea or ocean, then give it a name: the name is placed in the middle of the outline and sized to it. The outline is only shown here in the editor.",
         reshape: "Drag a corner to move it, drag an edge to add a corner, Alt-click a corner to remove it. Land, lakes and rivers snap to each other.",
         state: "Click corners. Clicking on a neighbour's border or corner shares it, and clicking on the coast snaps to it (clicking two points on the coast follows it). Double-click or Enter to finish, Backspace to undo a corner, Esc to cancel.",
         borders: "Drag a corner (shared corners move for every state; it snaps to the coast). Drop a corner on another to weld them. Double-click a border to add a corner; Alt-click a corner to remove it.",
@@ -482,7 +483,7 @@
         scale: "Click two points whose real distance you know, then enter it in miles."
     };
 
-    const DRAWING_MODES = ["land", "lake", "river", "state", "place", "movePlace", "scale"];
+    const DRAWING_MODES = ["land", "lake", "river", "ocean", "state", "place", "movePlace", "scale"];
 
     function setMode(mode) {
         cancelDrawing();
@@ -498,7 +499,7 @@
             if (mode === "borders") {
                 refreshHandles();
                 installVertexDrag();
-            } else if (mode === "land" || mode === "lake" || mode === "river") {
+            } else if (mode === "land" || mode === "lake" || mode === "river" || mode === "ocean") {
                 const draw = new ol.interaction.Draw({
                     source: new ol.source.Vector(), // the shape is saved and the map redrawn, so nothing is kept here
                     type: mode === "river" ? "LineString" : "Polygon",
@@ -532,7 +533,7 @@
 
         const sources = state.view.sources;
         const features = new ol.Collection([
-            ...sources.land.getFeatures(), ...sources.lakes.getFeatures(), ...sources.rivers.getFeatures()
+            ...sources.land.getFeatures(), ...sources.lakes.getFeatures(), ...sources.rivers.getFeatures(), ...sources.oceans.getFeatures()
         ]);
 
         modify = new ol.interaction.Modify({ features, pixelTolerance: 8 });
@@ -566,11 +567,20 @@
             ? { type: "LineString", coordinates: geometry.getCoordinates() }
             : { type: "Polygon", coordinates: geometry.getCoordinates() };
 
+        let name;
+        if (kind === "ocean") {
+            const answer = await ask({ title: "Name this sea or ocean", okLabel: "Add name", fields: [{ key: "name", label: "Name", required: true }] });
+            if (!answer) {
+                return; // cancelled: nothing is saved
+            }
+            name = answer.name;
+        }
+
         await guarded(async () => {
-            const created = await api("POST", `/api/maps/${state.mapId}/features`, { kind, geometry: json });
+            const created = await api("POST", `/api/maps/${state.mapId}/features`, { kind, geometry: json, name });
             await load();
             selectObject({ type: "feature", id: created.id });
-            say("Saved. Name it in the panel, or keep drawing.");
+            say(kind === "ocean" ? "Named." : "Saved. Name it in the panel (optional), or keep drawing.");
         });
     }
 
@@ -1154,7 +1164,7 @@
                             selectObject({ type: "state", id: s.id });
                         }
                     }
-                }, h("span", { class: "swatch", style: `background:${s.color}` }), s.name, s.hidden ? " ·" : ""),
+                }, h("span", { class: "swatch", style: `background:${s.color}` }), s.name, s.status === "capital" ? " (capital)" : "", s.hidden ? " ·" : ""),
                 s.kids.length ? list(s.kids) : null)));
 
         const tree = bundle ? MapCore.stateTree(bundle.states) : [];
@@ -1269,6 +1279,13 @@
                         " ",
                         h("button", { type: "button", onclick: () => takeOut([s]) }, "Take out"))
                     : null,
+                parent
+                    ? field(`Status in ${parent.name}`, bindSave(
+                        h("select", {}, ...Object.entries(MapCore.STATUS_NAMES).map(([key, label]) =>
+                            h("option", { value: key, selected: (s.status || "province") === key }, label))),
+                        (value) => api("PUT", `/api/map-states/${s.id}`, { status: value })))
+                    : null,
+                statsBlock(s),
                 isGroup
                     ? h("div", {},
                         h("p", { class: "hint" }, "Made of these states (shown on its lore page automatically):"),
@@ -1291,7 +1308,7 @@
             if (!f) {
                 return;
             }
-            const kindInput = f.kind === "river"
+            const kindInput = f.kind === "river" || f.kind === "ocean"
                 ? null
                 : bindSave(h("select", {},
                     h("option", { value: "land", selected: f.kind === "land" }, "Land"),
@@ -1300,9 +1317,10 @@
             const hiddenInput = hiddenField(f.hidden, (value) => guarded(async () => { await api("PUT", `/api/map-features/${f.id}`, { hidden: value }); await load(); }));
 
             add(inspectorEl, 
-                h("h3", {}, f.kind === "river" ? "River" : f.kind === "lake" ? "Lake" : "Land"),
-                field("Name (optional)", bindSave(h("input", { type: "text", value: f.name || "" }), (value) => api("PUT", `/api/map-features/${f.id}`, { name: value }))),
+                h("h3", {}, { river: "River", lake: "Lake", ocean: "Sea or ocean name", land: "Land" }[f.kind]),
+                field(f.kind === "ocean" ? "Name" : "Name (optional)", bindSave(h("input", { type: "text", value: f.name || "" }), (value) => api("PUT", `/api/map-features/${f.id}`, { name: value }))),
                 kindInput ? field("Kind", kindInput) : null,
+                f.kind === "ocean" ? h("p", { class: "hint" }, "The name sits in the middle of this outline and is sized to it. Reshape the outline to move or resize the name.") : null,
                 hiddenInput.element,
                 h("div", { class: "row" },
                     h("button", { type: "button", onclick: () => setMode("reshape") }, "Reshape"),
@@ -1329,6 +1347,24 @@
                     h("button", { type: "button", onclick: () => setMovePlace() }, "Move"),
                     h("button", { type: "button", class: "danger", onclick: () => deletePlace(p) }, "Delete")));
         }
+    }
+
+    // Area, border length and neighbours, from the shapes as drawn.
+    function statsBlock(s) {
+        const stats = s.stats;
+        if (!stats || stats.area_sq_mi <= 0) {
+            return null;
+        }
+        return h("div", { class: "stats" },
+            h("h4", {}, "Statistics (approximate)"),
+            h("p", {}, `Area about ${MapCore.approx(stats.area_sq_mi)} sq mi`),
+            h("p", {}, `Border about ${MapCore.approx(stats.perimeter_mi)} mi long`),
+            stats.neighbors.length
+                ? h("div", {}, h("p", { class: "hint" }, "Neighbours, with the border shared:"),
+                    h("ul", { class: "states-tree" }, ...stats.neighbors.map((n) =>
+                        h("li", {}, h("button", { type: "button", onclick: () => selectObject({ type: "state", id: n.id }) },
+                            `${n.name} · ${MapCore.approx(n.border_mi)} mi`)))))
+                : h("p", { class: "hint" }, "No neighbouring state shares a border with it."));
     }
 
     function zoomTo(stateId) {
@@ -1623,6 +1659,9 @@
         for (const name of ["land", "lakes", "rivers", "states", "labels", "points"]) {
             view.show(name, state.layers[name]);
         }
+        view.show("oceans", state.layers.waterNames);
+        view.show("waterLabels", state.layers.waterNames);
+        view.setWaterNames(state.layers.waterNames);
         let tracing = false;
         view.imageLayers.forEach((layer, index) => {
             const shown = state.layers.tracers && Boolean(state.bundle.images[index].visible);
@@ -1635,7 +1674,7 @@
     const layersEl = h("div", { class: "box" });
 
     function renderLayers() {
-        const names = [["tracers", "Tracer images"], ["land", "Land"], ["lakes", "Lakes"], ["rivers", "Rivers"], ["states", "States"], ["labels", "State names"], ["points", "Places"]];
+        const names = [["tracers", "Tracer images"], ["land", "Land"], ["lakes", "Lakes"], ["rivers", "Rivers"], ["waterNames", "River, lake and sea names"], ["states", "States"], ["labels", "State names"], ["points", "Places"]];
         put(layersEl, 
             h("h3", {}, "Layers"),
             ...names.map(([key, label]) => h("div", { class: "field check" },
@@ -1657,6 +1696,7 @@
         ["land", "Draw land"],
         ["lake", "Draw lake"],
         ["river", "Draw river"],
+        ["ocean", "Name a sea"],
         ["reshape", "Reshape shapes"],
         ["state", "Draw state"],
         ["borders", "Edit borders"],

@@ -29,6 +29,7 @@
         colors.label = get("--map-label", "#2b2b2b");
         colors.halo = get("--map-label-halo", "rgba(255,255,255,0.8)");
         colors.point = get("--map-point", "#7a1f1f");
+        colors.water = get("--map-water-label", "#35566f");
         colors.accent = get("--map-accent", "#d4a900");
         colors.serif = get("--font-serif", "serif");
         colors.sans = get("--font-sans", "sans-serif");
@@ -183,11 +184,66 @@
     }
 
     // ------------------------------------------------------
+    // Names on the map: sized to what they name, faded as you zoom in
+    // ------------------------------------------------------
+    //
+    // A name is given a size in map units from the width of what it names
+    // (so a big state or sea gets a big name, and the name grows and shrinks
+    // with the map as you zoom). Too small on screen and it is left out; once
+    // zooming in has made it large it fades out, in proportion, until it is
+    // gone, so that it never gets in the way of the land it names.
+
+    const NAME_SMALLEST = 8; // px: below this it isn't drawn
+    const NAME_CLEAR = 13; // px: fully visible from here...
+    const NAME_FADE_FROM = 24; // ...until it starts to fade
+    const NAME_GONE = 64; // px: not drawn from here on
+
+    function nameOpacity(px) {
+        let opacity;
+        if (px < NAME_SMALLEST || px >= NAME_GONE) {
+            opacity = 0;
+        } else if (px < NAME_CLEAR) {
+            opacity = (px - NAME_SMALLEST) / (NAME_CLEAR - NAME_SMALLEST);
+        } else if (px <= NAME_FADE_FROM) {
+            opacity = 1;
+        } else {
+            opacity = 1 - (px - NAME_FADE_FROM) / (NAME_GONE - NAME_FADE_FROM);
+        }
+        // So faint it can't be read: leave it out, so it doesn't push other names aside.
+        return opacity < 0.12 ? 0 : opacity;
+    }
+
+    // The size, in map units, of a name `length` letters long that is to sit
+    // within something `span` units wide: a fraction `share` of the width
+    // (so a bigger place gets a bigger name), but never so big that the name
+    // wouldn't fit across it. By the time you have zoomed in until the place
+    // fills the screen, its name is large enough to have faded away.
+    function nameSize(span, length, share = 0.075) {
+        return Math.min(span * share, span / Math.max(length, 4));
+    }
+
+    // A CSS color with its opacity scaled (hex or rgb[a]).
+    function withOpacity(css, k) {
+        if (css.startsWith("#")) {
+            return hexAlpha(css, k);
+        }
+        const match = css.match(/rgba?\(([^)]+)\)/);
+        if (!match) {
+            return css;
+        }
+        const [r, g, b, a = 1] = match[1].split(",").map(Number);
+        return `rgba(${r}, ${g}, ${b}, ${a * k})`;
+    }
+
+    // Spaced-out capitals, the way seas are lettered.
+    const lettered = (name) => name.toUpperCase().split("").join("\u2009");
+
+    // ------------------------------------------------------
     // Building a map view
     // ------------------------------------------------------
 
     function create({ target, bundle, editable = false }) {
-        const view = { editable, bundle: null, vmap: null, selected: null, marked: new Set(), children: new Map(), listeners: {} };
+        const view = { editable, bundle: null, vmap: null, selected: null, marked: new Set(), children: new Map(), waterNames: true, listeners: {} };
         const map = bundle.map;
         let extent = [0, 0, map.width, map.height];
 
@@ -198,6 +254,8 @@
             land: new ol.source.Vector(),
             lakes: new ol.source.Vector(),
             rivers: new ol.source.Vector(),
+            oceans: new ol.source.Vector(),
+            waterLabels: new ol.source.Vector(),
             states: new ol.source.Vector(),
             borders: new ol.source.Vector(),
             outlines: new ol.source.Vector(),
@@ -228,14 +286,92 @@
                 lineJoin: "round"
             })
         });
-        const riverStyle = (feature) => new ol.style.Style({
-            stroke: new ol.style.Stroke({
-                color: selectedIs("feature", feature.get("id")) ? colors.accent : colors.river,
-                width: selectedIs("feature", feature.get("id")) ? 4 : 2.5,
-                lineCap: "round",
-                lineJoin: "round"
-            })
-        });
+        // ---- names (see nameOpacity) ----
+        const nameStyles = new Map();
+        function nameText({ text, px, alpha, weight = "bold", family, color, halo, zIndex = 0, placement, offsetY = 0, star = false }) {
+            const size = Math.round(px);
+            const fade = Math.round(alpha * 20) / 20;
+            const key = [text, size, fade, weight, family, color, halo, zIndex, placement || "", Math.round(offsetY), star].join("|");
+            let style = nameStyles.get(key);
+            if (!style) {
+                const radius = size * 0.5;
+                style = new ol.style.Style({
+                    zIndex,
+                    image: star
+                        ? new ol.style.RegularShape({
+                            points: 5,
+                            radius,
+                            radius2: radius * 0.45,
+                            fill: new ol.style.Fill({ color: withOpacity(color, fade) }),
+                            stroke: new ol.style.Stroke({ color: withOpacity(halo, fade), width: 1.5 })
+                        })
+                        : undefined,
+                    text: new ol.style.Text({
+                        text,
+                        font: `${weight} ${size}px ${family}`,
+                        fill: new ol.style.Fill({ color: withOpacity(color, fade) }),
+                        stroke: new ol.style.Stroke({ color: withOpacity(halo, fade), width: Math.max(3, size / 4) }),
+                        offsetY: star ? offsetY + radius + size * 0.7 : offsetY,
+                        placement,
+                        maxAngle: Math.PI / 5,
+                        overflow: true
+                    })
+                });
+                if (nameStyles.size > 900) {
+                    nameStyles.clear();
+                }
+                nameStyles.set(key, style);
+            }
+            return style;
+        }
+
+        const riverStyle = (feature, resolution) => {
+            const chosen = selectedIs("feature", feature.get("id"));
+            const styles = [new ol.style.Style({
+                stroke: new ol.style.Stroke({
+                    color: chosen ? colors.accent : colors.river,
+                    width: chosen ? 4 : 2.5,
+                    lineCap: "round",
+                    lineJoin: "round"
+                })
+            })];
+
+            const name = feature.get("name");
+            if (name && view.waterNames) {
+                // The name runs along the river, sized to its length.
+                const px = nameSize(feature.get("length") * 0.55, name.length, 0.12) / resolution;
+                const alpha = nameOpacity(px);
+                if (alpha > 0) {
+                    styles.push(nameText({ text: name, px, alpha, weight: "italic", family: colors.serif, color: colors.water, halo: colors.halo, placement: "line", offsetY: -px * 0.6 }));
+                }
+            }
+            return styles;
+        };
+
+        // The outline of a sea or ocean is only for the editor (it is what the name is sized to).
+        const oceanStyle = (feature) => {
+            if (!editable) {
+                return null;
+            }
+            const chosen = selectedIs("feature", feature.get("id"));
+            return new ol.style.Style({
+                stroke: new ol.style.Stroke({ color: chosen ? colors.accent : withOpacity(colors.river, 0.7), width: chosen ? 3 : 1.5, lineDash: [8, 6] })
+            });
+        };
+
+        const waterLabelStyle = (feature, resolution) => {
+            if (!view.waterNames) {
+                return null;
+            }
+            const sea = feature.get("kind") === "ocean";
+            const shown = sea ? lettered(feature.get("name")) : feature.get("name");
+            // A sea's name is spread out across it; a lake's fills more of its lake.
+            const px = (sea ? nameSize(feature.get("span"), shown.length * 0.85, 0.035) : nameSize(feature.get("span"), shown.length, 0.1)) / resolution;
+            const alpha = nameOpacity(px);
+            return alpha > 0
+                ? nameText({ text: shown, px, alpha, weight: "italic", family: colors.serif, color: colors.water, halo: colors.halo, zIndex: sea ? 1 : 2 })
+                : null;
+        };
         const stateStyle = (feature) => new ol.style.Style({
             fill: new ol.style.Fill({ color: hexAlpha(feature.get("color"), view.marked.has(feature.get("id")) ? 0.42 : 0.2) })
         });
@@ -257,39 +393,21 @@
             })
         });
         const labelStyle = (feature, resolution) => {
-            const name = feature.get("name");
-            const onScreen = feature.get("span") / resolution;
-
-            // A superstate's name is for the wider view: it gives way once the
-            // map is zoomed in far enough to be showing its clients.
-            if (feature.get("group")) {
-                if (onScreen < name.length * 6 || onScreen > 1100) {
-                    return null;
-                }
-                return new ol.style.Style({
-                    zIndex: 10,
-                    text: new ol.style.Text({
-                        text: name.toUpperCase(),
-                        font: `bold 19px ${feature.get("sans") ? colors.sans : colors.serif}`,
-                        fill: new ol.style.Fill({ color: colors.label }),
-                        stroke: new ol.style.Stroke({ color: colors.halo, width: 5 }),
-                        overflow: true
-                    })
-                });
-            }
-
-            // Hide the name of a state too small on screen to hold it.
-            if (onScreen < name.length * 5) {
+            const group = feature.get("group");
+            const text = group ? feature.get("name").toUpperCase() : feature.get("name");
+            const px = nameSize(feature.get("span"), text.length, 0.075) / resolution;
+            const alpha = nameOpacity(px);
+            if (alpha === 0) {
                 return null;
             }
-            return new ol.style.Style({
-                text: new ol.style.Text({
-                    text: name,
-                    font: `bold 15px ${feature.get("sans") ? colors.sans : colors.serif}`,
-                    fill: new ol.style.Fill({ color: colors.label }),
-                    stroke: new ol.style.Stroke({ color: colors.halo, width: 4 }),
-                    overflow: true
-                })
+            // A superstate's name is placed first, so it takes the place of its clients' names.
+            return nameText({
+                text, px, alpha,
+                family: feature.get("sans") ? colors.sans : colors.serif,
+                color: colors.label,
+                halo: colors.halo,
+                zIndex: group ? 10 : 5, // where names collide, the higher z-index keeps its place (and, level, the one drawn first)
+                star: Boolean(feature.get("capital"))
             });
         };
         const pointStyle = (feature) => {
@@ -311,6 +429,8 @@
             });
         };
 
+        const byRank = (a, b) => (b.get("rank") || 0) - (a.get("rank") || 0);
+
         // Bottom to top: sea, tracer images (z-index 1), land, lakes, rivers, states, borders, names, places.
         const layer = (source, style, zIndex, extra = {}) => new ol.layer.Vector({ source, style, zIndex, ...extra });
         view.layers = {
@@ -318,11 +438,15 @@
             land: layer(sources.land, landStyle, 2),
             lakes: layer(sources.lakes, lakeStyle, 3),
             rivers: layer(sources.rivers, riverStyle, 4),
+            oceans: layer(sources.oceans, oceanStyle, 1.5),
             states: layer(sources.states, stateStyle, 5),
             borders: layer(sources.borders, borderStyle, 6),
             outlines: layer(sources.outlines, outlineStyle, 6.5),
-            labels: layer(sources.labels, labelStyle, 7, { declutter: true }),
-            points: layer(sources.points, pointStyle, 8, { declutter: true })
+            // Where names collide the bigger one wins, so a superstate's name takes
+            // the place of its clients' names until they are big enough to show.
+            waterLabels: layer(sources.waterLabels, waterLabelStyle, 6.8, { declutter: "names", renderOrder: byRank }),
+            labels: layer(sources.labels, labelStyle, 7, { declutter: "names", renderOrder: byRank }),
+            points: layer(sources.points, pointStyle, 8, { declutter: "places" })
         };
 
         view.imageLayers = [];
@@ -363,10 +487,24 @@
             sources.sea.addFeature(new ol.Feature(ol.geom.Polygon.fromExtent(extent)));
 
             for (const f of next.features) {
-                const target = f.kind === "land" ? sources.land : f.kind === "lake" ? sources.lakes : sources.rivers;
-                const feature = new ol.Feature({ geometry: geometryOf(f.geometry), id: f.id, kind: f.kind, name: f.name });
+                const target = { land: sources.land, lake: sources.lakes, river: sources.rivers, ocean: sources.oceans }[f.kind];
+                const geometry = geometryOf(f.geometry);
+                const feature = new ol.Feature({ geometry, id: f.id, kind: f.kind, name: f.name });
                 feature.setId(`feature-${f.id}`);
+
+                if (f.kind === "river") {
+                    feature.set("length", geometry.getLength());
+                }
                 target.addFeature(feature);
+
+                // A named lake or sea has its name in the middle of it.
+                if (f.name && (f.kind === "lake" || f.kind === "ocean")) {
+                    const box = geometry.getExtent();
+                    sources.waterLabels.addFeature(new ol.Feature({
+                        geometry: new ol.geom.Point(geometry.getInteriorPoint().getCoordinates().slice(0, 2)),
+                        name: f.name, kind: f.kind, span: box[2] - box[0], rank: f.kind === "ocean" ? 0 : box[2] - box[0]
+                    }));
+                }
             }
 
             rebuildStates();
@@ -428,7 +566,8 @@
                 const box = biggest.getExtent();
                 const label = new ol.Feature({
                     geometry: new ol.geom.Point(biggest.getInteriorPoint().getCoordinates().slice(0, 2)),
-                    id: s.id, name: s.name, sans: s.label_sans, span: box[2] - box[0]
+                    id: s.id, name: s.name, sans: s.label_sans, span: box[2] - box[0], capital: s.status === "capital",
+                    rank: nameSize(box[2] - box[0], s.name.length)
                 });
                 sources.labels.addFeature(label);
             }
@@ -467,7 +606,8 @@
                 if (box) {
                     sources.labels.addFeature(new ol.Feature({
                         geometry: new ol.geom.Point([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]),
-                        id: group.id, name: group.name, sans: group.label_sans, span: box[2] - box[0], group: true
+                        id: group.id, name: group.name, sans: group.label_sans, span: box[2] - box[0], group: true,
+                        rank: nameSize(box[2] - box[0], group.name.length) * 1.5
                     }));
                 }
             }
@@ -560,7 +700,7 @@
                     }
                     const layerKind = source === view.layers.points ? "point"
                         : source === view.layers.states ? "state"
-                        : (source === view.layers.land || source === view.layers.lakes || source === view.layers.rivers) ? "feature" : null;
+                        : (source === view.layers.land || source === view.layers.lakes || source === view.layers.rivers || source === view.layers.oceans) ? "feature" : null;
                     if (layerKind) {
                         found = { type: layerKind, id: feature.get("id") };
                     }
@@ -592,6 +732,13 @@
         };
 
         view.show = (name, visible) => view.layers[name].setVisible(visible);
+
+        // River, lake and sea names on or off.
+        view.setWaterNames = (on) => {
+            view.waterNames = on;
+            view.layers.rivers.changed();
+            view.layers.waterLabels.changed();
+        };
 
         view.setTracing = (on) => {
             if (view.tracing !== on) {
@@ -633,5 +780,26 @@
         return roots;
     }
 
-    window.MapCore = { create, colors, readColors, hexAlpha, stateCoordinates, vertexMap, stateTree };
+    // "About 45,000": two significant figures for the big numbers (these are
+    // measured off a drawn map, so more digits would only pretend).
+    function approx(n) {
+        if (!(n > 0)) {
+            return "0";
+        }
+        if (n >= 100) {
+            const step = 10 ** (Math.floor(Math.log10(n)) - 1);
+            return (Math.round(n / step) * step).toLocaleString();
+        }
+        if (n >= 10) {
+            return String(Math.round(n));
+        }
+        return n.toLocaleString(undefined, { maximumFractionDigits: n >= 1 ? 1 : 2 });
+    }
+
+    // Capital, province, vassal, march, territory (the status of a state within a superstate).
+    const STATUS_NAMES = {
+        capital: "Capital state", province: "Province", vassal: "Vassal", march: "March", territory: "Territory"
+    };
+
+    window.MapCore = { create, colors, readColors, hexAlpha, stateCoordinates, vertexMap, stateTree, approx, STATUS_NAMES };
 })();
