@@ -60,19 +60,11 @@
         );
     }
 
-    // The shared borders, as long polylines so that dotted lines run
-    // smoothly. Each border edge is drawn once however many states use it;
-    // lines are cut where the states on either side change.
-    function borderChains(states, vmap) {
+    // Every distinct border edge between corners, with the leaf states (those
+    // with a shape) that have it on their outline. An edge is drawn once
+    // however many states use it.
+    function borderEdges(states) {
         const edges = new Map();
-        const adjacent = new Map();
-
-        const link = (vertex, key) => {
-            if (!adjacent.has(vertex)) {
-                adjacent.set(vertex, []);
-            }
-            adjacent.get(vertex).push(key);
-        };
 
         for (const state of states) {
             for (const polygon of state.polygons) {
@@ -82,8 +74,6 @@
                         const key = a < b ? `${a},${b}` : `${b},${a}`;
                         if (!edges.has(key)) {
                             edges.set(key, { a, b, owners: new Set() });
-                            link(a, key);
-                            link(b, key);
                         }
                         edges.get(key).owners.add(state.id);
                     });
@@ -91,8 +81,23 @@
             }
         }
 
-        for (const edge of edges.values()) {
-            edge.signature = [...edge.owners].sort((x, y) => x - y).join(",");
+        return [...edges.values()];
+    }
+
+    // Joins edges into long polylines, so dotted lines run smoothly. Edges are
+    // joined while they have the same `signature`; a line also stops at any
+    // corner where more or fewer than two of the edges meet.
+    function chainEdges(edgeList, vmap, signatureOf) {
+        const edges = new Map(edgeList.map((e) => [`${e.a},${e.b}`, { ...e, signature: signatureOf(e) }]));
+        const adjacent = new Map();
+
+        for (const [key, edge] of edges) {
+            for (const v of [edge.a, edge.b]) {
+                if (!adjacent.has(v)) {
+                    adjacent.set(v, []);
+                }
+                adjacent.get(v).push(key);
+            }
         }
 
         const seen = new Set();
@@ -143,6 +148,18 @@
         return chains;
     }
 
+    // The borders between states, cut where the states on either side change.
+    function borderChains(states, vmap) {
+        return chainEdges(borderEdges(states), vmap, (e) => [...e.owners].sort((x, y) => x - y).join(","));
+    }
+
+    // The outline of a superstate: the edges that have exactly one of its
+    // leaf states on them (so not the borders between its own clients).
+    function outlineChains(edgeList, leaves, vmap) {
+        const outline = edgeList.filter((e) => [...e.owners].filter((id) => leaves.has(id)).length === 1);
+        return chainEdges(outline, vmap, () => "outline");
+    }
+
     // ------------------------------------------------------
     // The scale bar: miles, following the zoom
     // ------------------------------------------------------
@@ -170,7 +187,7 @@
     // ------------------------------------------------------
 
     function create({ target, bundle, editable = false }) {
-        const view = { editable, bundle: null, vmap: null, selected: null, listeners: {} };
+        const view = { editable, bundle: null, vmap: null, selected: null, marked: new Set(), children: new Map(), listeners: {} };
         const map = bundle.map;
         let extent = [0, 0, map.width, map.height];
 
@@ -183,6 +200,7 @@
             rivers: new ol.source.Vector(),
             states: new ol.source.Vector(),
             borders: new ol.source.Vector(),
+            outlines: new ol.source.Vector(),
             labels: new ol.source.Vector(),
             points: new ol.source.Vector()
         };
@@ -219,7 +237,16 @@
             })
         });
         const stateStyle = (feature) => new ol.style.Style({
-            fill: new ol.style.Fill({ color: hexAlpha(feature.get("color"), selectedIs("state", feature.get("id")) ? 0.42 : 0.2) })
+            fill: new ol.style.Fill({ color: hexAlpha(feature.get("color"), view.marked.has(feature.get("id")) ? 0.42 : 0.2) })
+        });
+        // The outline of a superstate, heavier than the dots between its clients.
+        const outlineStyle = (feature) => new ol.style.Style({
+            stroke: new ol.style.Stroke({
+                color: hexAlpha(feature.get("color"), 0.95),
+                width: selectedIs("state", feature.get("groupId")) ? 6 : Math.max(2.5, 4.5 - feature.get("depth") * 1.5),
+                lineJoin: "round",
+                lineCap: "round"
+            })
         });
         const borderStyle = () => new ol.style.Style({
             stroke: new ol.style.Stroke({
@@ -230,9 +257,29 @@
             })
         });
         const labelStyle = (feature, resolution) => {
-            // Hide the name of a state too small on screen to hold it.
             const name = feature.get("name");
-            if (feature.get("span") / resolution < name.length * 5) {
+            const onScreen = feature.get("span") / resolution;
+
+            // A superstate's name is for the wider view: it gives way once the
+            // map is zoomed in far enough to be showing its clients.
+            if (feature.get("group")) {
+                if (onScreen < name.length * 6 || onScreen > 1100) {
+                    return null;
+                }
+                return new ol.style.Style({
+                    zIndex: 10,
+                    text: new ol.style.Text({
+                        text: name.toUpperCase(),
+                        font: `bold 19px ${feature.get("sans") ? colors.sans : colors.serif}`,
+                        fill: new ol.style.Fill({ color: colors.label }),
+                        stroke: new ol.style.Stroke({ color: colors.halo, width: 5 }),
+                        overflow: true
+                    })
+                });
+            }
+
+            // Hide the name of a state too small on screen to hold it.
+            if (onScreen < name.length * 5) {
                 return null;
             }
             return new ol.style.Style({
@@ -273,6 +320,7 @@
             rivers: layer(sources.rivers, riverStyle, 4),
             states: layer(sources.states, stateStyle, 5),
             borders: layer(sources.borders, borderStyle, 6),
+            outlines: layer(sources.outlines, outlineStyle, 6.5),
             labels: layer(sources.labels, labelStyle, 7, { declutter: true }),
             points: layer(sources.points, pointStyle, 8, { declutter: true })
         };
@@ -343,9 +391,24 @@
         function rebuildStates() {
             sources.states.clear(true);
             sources.borders.clear(true);
+            sources.outlines.clear(true);
             sources.labels.clear(true);
 
-            for (const s of view.bundle.states) {
+            const all = view.bundle.states;
+            view.byId = new Map(all.map((s) => [s.id, s]));
+            view.children = new Map();
+            for (const s of all) {
+                if (s.parent_id && view.byId.has(s.parent_id)) {
+                    if (!view.children.has(s.parent_id)) {
+                        view.children.set(s.parent_id, []);
+                    }
+                    view.children.get(s.parent_id).push(s.id);
+                }
+            }
+
+            const leaves = all.filter((s) => s.polygons.length > 0);
+
+            for (const s of leaves) {
                 const coordinates = stateCoordinates(s.polygons, view.vmap);
                 if (!coordinates.length || coordinates.some((p) => p[0].length < 4)) {
                     continue;
@@ -370,9 +433,42 @@
                 sources.labels.addFeature(label);
             }
 
-            for (const chain of borderChains(view.bundle.states, view.vmap)) {
+            for (const chain of borderChains(leaves, view.vmap)) {
                 if (chain.length > 1) {
                     sources.borders.addFeature(new ol.Feature(new ol.geom.LineString(chain)));
+                }
+            }
+
+            // Superstates: an outline around their clients, and a name over them.
+            const edges = borderEdges(leaves);
+            const depthOf = (s) => {
+                let depth = 0;
+                for (let at = s; at && at.parent_id && depth < 20; depth++) {
+                    at = view.byId.get(at.parent_id);
+                }
+                return depth;
+            };
+            // Outer superstates first, so the inner ones are drawn over them (thinner).
+            const groups = all.filter((s) => s.polygons.length === 0).sort((a, b) => depthOf(a) - depthOf(b));
+            for (const group of groups) {
+                const members = new Set(view.leafIds(group.id));
+                if (members.size === 0) {
+                    continue;
+                }
+
+                for (const chain of outlineChains(edges, members, view.vmap)) {
+                    if (chain.length > 1) {
+                        const line = new ol.Feature({ geometry: new ol.geom.LineString(chain), color: group.color, groupId: group.id, depth: depthOf(group) });
+                        sources.outlines.addFeature(line);
+                    }
+                }
+
+                const box = view.stateExtent(group.id);
+                if (box) {
+                    sources.labels.addFeature(new ol.Feature({
+                        geometry: new ol.geom.Point([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]),
+                        id: group.id, name: group.name, sans: group.label_sans, span: box[2] - box[0], group: true
+                    }));
                 }
             }
         }
@@ -408,13 +504,48 @@
             olView.fit(box || extent, { padding: [30, 30, 30, 30], duration: options.animate ? 400 : 0, maxResolution: undefined, ...options });
         };
 
-        view.stateExtent = (id) => {
-            const feature = sources.states.getFeatureById(`state-${id}`);
-            return feature ? feature.getGeometry().getExtent() : null;
+        // The states with a shape that make up a state: itself, or (for a
+        // superstate) all its clients, however deep.
+        view.leafIds = (id) => {
+            const state = view.byId && view.byId.get(id);
+            if (!state) {
+                return [];
+            }
+            if (state.polygons.length > 0) {
+                return [id];
+            }
+            return (view.children.get(id) || []).flatMap((child) => view.leafIds(child));
         };
 
-        view.select = (selection) => {
+        // Where a state (or all of a superstate) is on the map.
+        view.stateExtent = (id) => {
+            const box = ol.extent.createEmpty();
+            let any = false;
+            for (const leaf of view.leafIds(id)) {
+                const feature = sources.states.getFeatureById(`state-${leaf}`);
+                if (feature) {
+                    ol.extent.extend(box, feature.getGeometry().getExtent());
+                    any = true;
+                }
+            }
+            return any ? box : null;
+        };
+
+        // `selection` is what the panel shows; `more` are further states (or
+        // superstates) marked along with it, for combining. A superstate marks
+        // all its clients.
+        view.select = (selection, more = []) => {
             view.selected = selection;
+            view.marked = new Set();
+            const ids = [...more];
+            if (selection && selection.type === "state") {
+                ids.push(selection.id);
+            }
+            for (const id of ids) {
+                for (const leaf of view.leafIds(id)) {
+                    view.marked.add(leaf);
+                }
+            }
             repaint();
         };
 
@@ -486,5 +617,21 @@
         return view;
     }
 
-    window.MapCore = { create, colors, readColors, hexAlpha, stateCoordinates, vertexMap };
+    // States as a tree: [{ ...state, kids: [...] }], each level in name order.
+    function stateTree(states) {
+        const nodes = new Map(states.map((s) => [s.id, { ...s, kids: [] }]));
+        const roots = [];
+        for (const node of nodes.values()) {
+            const parent = node.parent_id ? nodes.get(node.parent_id) : null;
+            (parent ? parent.kids : roots).push(node);
+        }
+        const sort = (list) => {
+            list.sort((a, b) => a.name.localeCompare(b.name));
+            list.forEach((n) => sort(n.kids));
+        };
+        sort(roots);
+        return roots;
+    }
+
+    window.MapCore = { create, colors, readColors, hexAlpha, stateCoordinates, vertexMap, stateTree };
 })();

@@ -959,9 +959,13 @@
             hiddenField(draft.hidden, (value) => { draft.hidden = value; markDirty(); }).element,
 
             draft.state
-                ? h("p", { class: "hint-block" }, "A state on the map ",
+                ? h("p", { class: "hint-block" }, draft.state.is_group ? "A superstate on the map " : "A state on the map ",
                     h("a", { href: `/maps/${encodeURIComponent(draft.state.map_slug)}?state=${draft.state.id}`, target: "_blank" }, draft.state.map_name),
-                    ". Its name is changed, and the state deleted, on the map.")
+                    draft.state.parent ? `, part of ${draft.state.parent.name}` : "",
+                    ". Its name is changed, and the state deleted, on the map.",
+                    draft.state.is_group && draft.state.clients.length
+                        ? ` Its page lists its clients automatically: ${draft.state.clients.map((c) => c.name).join(", ")}.`
+                        : "")
                 : null,
 
             ...(draft.era ? [eraNotesPanel(draft.era)] : []),

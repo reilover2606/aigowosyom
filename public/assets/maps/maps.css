@@ -152,6 +152,10 @@ html[data-theme="neumorph"][data-mode="dark"] {
     text-align: left;
 }
 
+.map-info li ul {
+    margin: 0 0 0 14px;
+}
+
 .map-info .state-name.sans {
     font-family: var(--font-sans);
 }
@@ -303,4 +307,43 @@ html[data-theme="neumorph"][data-mode="dark"] {
 
 .map-status.error {
     color: #b32424;
+}
+
+/* The list of states in the editor (a superstate with its clients below). */
+.states-tree {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.states-tree .states-tree {
+    margin-left: 14px;
+}
+
+.states-tree button {
+    display: block;
+    width: 100%;
+    margin: 1px 0;
+    padding: 3px 8px;
+    text-align: left;
+    font-weight: normal;
+}
+
+.states-tree button.group {
+    font-weight: bold;
+}
+
+.states-tree button.active {
+    background: var(--accent, #4a7c59);
+    border-color: var(--accent, #4a7c59);
+    color: #fff;
+}
+
+.map-side .swatch {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    margin-right: 6px;
+    border-radius: 3px;
+    vertical-align: -1px;
 }

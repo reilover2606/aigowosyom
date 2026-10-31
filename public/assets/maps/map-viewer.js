@@ -28,29 +28,45 @@
     let view = null;
     let bundle = null;
 
+    // The states as a tree: a superstate with its clients indented below it.
+    function stateList(nodes) {
+        return el("ul", {},
+            nodes.map((s) =>
+                el("li", {},
+                    el("button", { type: "button", onclick: () => choose({ type: "state", id: s.id }, true) },
+                        el("span", { class: "swatch", style: `background:${s.color}` }), s.name),
+                    s.kids.length ? stateList(s.kids) : null)));
+    }
+
     function overview() {
-        const states = [...bundle.states].sort((a, b) => a.name.localeCompare(b.name));
+        const tree = MapCore.stateTree(bundle.states);
         info.replaceChildren(
             el("h2", {}, bundle.map.name),
             el("p", { class: "muted" }, "Click a state or a place on the map to read about it."),
-            states.length
-                ? el("ul", {},
-                    states.map((s) =>
-                        el("li", {},
-                            el("button", { type: "button", onclick: () => choose({ type: "state", id: s.id }, true) },
-                                el("span", { class: "swatch", style: `background:${s.color}` }), s.name))))
-                : null
+            tree.length ? stateList(tree) : null
         );
     }
 
     function describe(selection) {
         if (selection.type === "state") {
             const s = bundle.states.find((x) => x.id === selection.id);
+            const parent = s.parent_id ? bundle.states.find((x) => x.id === s.parent_id) : null;
+            const clients = bundle.states.filter((x) => x.parent_id === s.id).sort((a, b) => a.name.localeCompare(b.name));
             return el("div", {},
                 el("h2", {}, el("span", { class: "swatch", style: `background:${s.color}` }),
                     el("span", { class: `state-name${s.label_sans ? " sans conlang" : ""}` }, s.name)),
+                parent
+                    ? el("p", { class: "muted" }, "Part of ",
+                        el("a", { href: "#", onclick: (event) => { event.preventDefault(); choose({ type: "state", id: parent.id }, true); } }, parent.name))
+                    : null,
                 s.page && s.page.excerpt ? el("p", {}, s.page.excerpt) : null,
-                s.page ? el("p", {}, el("a", { href: s.page.url }, "Read about it →")) : null);
+                s.page ? el("p", {}, el("a", { href: s.page.url }, "Read about it →")) : null,
+                clients.length
+                    ? el("div", {}, el("p", { class: "muted" }, "Made up of:"),
+                        el("ul", {}, clients.map((c) =>
+                            el("li", {}, el("button", { type: "button", onclick: () => choose({ type: "state", id: c.id }, true) },
+                                el("span", { class: "swatch", style: `background:${c.color}` }), c.name)))))
+                    : null);
         }
 
         const p = bundle.points.find((x) => x.id === selection.id);

@@ -23,6 +23,8 @@
         selection: null,
         draw: null, // a state being drawn: { points, target }
         followBorders: true,
+        coastSnap: true,
+        multi: [], // states marked together (shift-click), for combining
         layers: { tracers: true, land: true, lakes: true, rivers: true, states: true, labels: true, points: true },
         interactions: []
     };
@@ -156,6 +158,17 @@
 
         state.bundle = await api("GET", `/api/maps/${state.mapId}`);
 
+        // States may have gone (a superstate left with no clients is removed).
+        const known = new Set(state.bundle.states.map((x) => x.id));
+        state.multi = state.multi.filter((id) => known.has(id));
+        if (state.selection && state.selection.type === "state" && !known.has(state.selection.id)) {
+            state.selection = null;
+        }
+        if (state.selection && state.selection.type === "multi" && state.multi.length < 2) {
+            state.selection = state.multi.length === 1 ? { type: "state", id: state.multi[0] } : null;
+            state.multi = [];
+        }
+
         if (remount || !state.view) {
             mountView();
         } else {
@@ -163,6 +176,7 @@
             state.view.setImages(state.bundle.images);
         }
 
+        state.view.select(state.selection, state.multi);
         applyLayerVisibility();
         refreshHandles();
         refreshModify();
@@ -296,8 +310,129 @@
         return best;
     }
 
+    // ---- the coastline: the outlines of the land shapes (lakes are ignored) ----
+
+    function coastRings() {
+        return state.bundle.features
+            .filter((f) => f.kind === "land")
+            .flatMap((f) => f.geometry.coordinates)
+            .map((ring) => {
+                const points = ring.map((c) => [c[0], c[1]]);
+                const last = points[points.length - 1];
+                if (points.length > 1 && last[0] === points[0][0] && last[1] === points[0][1]) {
+                    points.pop();
+                }
+                return points;
+            })
+            .filter((ring) => ring.length >= 3);
+    }
+
+    // The nearest point on any coastline within `withinPx`: its position and
+    // where it is on the ring ({ ring, seg, t }: between corner `seg` and the
+    // next one). Close to a corner of the coast it snaps to the corner.
+    function nearestCoast(coordinate, withinPx) {
+        const limit = pixelsToUnits(withinPx);
+        const rings = coastRings();
+        let best = null;
+
+        rings.forEach((points, ring) => {
+            points.forEach((a, seg) => {
+                const b = points[(seg + 1) % points.length];
+                const dx = b[0] - a[0];
+                const dy = b[1] - a[1];
+                const lengthSquared = dx * dx + dy * dy;
+                const t = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, ((coordinate[0] - a[0]) * dx + (coordinate[1] - a[1]) * dy) / lengthSquared));
+                const x = a[0] + t * dx;
+                const y = a[1] + t * dy;
+                const distance = Math.hypot(coordinate[0] - x, coordinate[1] - y);
+                if (distance <= limit && (!best || distance < best.distance)) {
+                    best = { x, y, distance, ring, seg, t };
+                }
+            });
+        });
+
+        if (best) {
+            const points = rings[best.ring];
+            const corner = pixelsToUnits(SNAP_VERTEX_PX * 0.7);
+            const a = points[best.seg];
+            const b = points[(best.seg + 1) % points.length];
+            if (Math.hypot(best.x - a[0], best.y - a[1]) <= corner) {
+                Object.assign(best, { x: a[0], y: a[1], t: 0 });
+            } else if (Math.hypot(best.x - b[0], best.y - b[1]) <= corner) {
+                Object.assign(best, { x: b[0], y: b[1], seg: (best.seg + 1) % points.length, t: 0 });
+            }
+        }
+        return best;
+    }
+
+    // Where a position sits on the coast, if it is on it (to the last decimal).
+    function coastLocation(x, y) {
+        const rings = coastRings();
+        for (let ring = 0; ring < rings.length; ring++) {
+            const points = rings[ring];
+            for (let seg = 0; seg < points.length; seg++) {
+                const a = points[seg];
+                const b = points[(seg + 1) % points.length];
+                const dx = b[0] - a[0];
+                const dy = b[1] - a[1];
+                const lengthSquared = dx * dx + dy * dy;
+                const t = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / lengthSquared));
+                if (Math.hypot(x - (a[0] + t * dx), y - (a[1] + t * dy)) < 1e-4) {
+                    return { ring, seg, t };
+                }
+            }
+        }
+        return null;
+    }
+
+    // The corners of the coast between two places on it, the shorter way round.
+    function pathAlongCoast(from, to) {
+        const points = coastRings()[from.ring];
+        const n = points.length;
+        const at = (loc) => {
+            const a = points[loc.seg];
+            const b = points[(loc.seg + 1) % n];
+            return [a[0] + loc.t * (b[0] - a[0]), a[1] + loc.t * (b[1] - a[1])];
+        };
+        const start = at(from);
+        const end = at(to);
+
+        const forward = [];
+        const backward = [];
+        if (to.seg !== from.seg || to.t < from.t) {
+            for (let i = (from.seg + 1) % n; ; i = (i + 1) % n) {
+                forward.push(points[i]);
+                if (i === to.seg) {
+                    break;
+                }
+            }
+        }
+        if (to.seg !== from.seg || to.t > from.t) {
+            for (let i = from.seg; ; i = (i - 1 + n) % n) {
+                backward.push(points[i]);
+                if (i === (to.seg + 1) % n) {
+                    break;
+                }
+            }
+        }
+
+        const length = (path) => {
+            const all = [start, ...path, end];
+            let total = 0;
+            for (let i = 1; i < all.length; i++) {
+                total += Math.hypot(all[i][0] - all[i - 1][0], all[i][1] - all[i - 1][1]);
+            }
+            return total;
+        };
+
+        // An empty list is the direct way (both ends on the same stretch).
+        const way = length(forward) <= length(backward) ? forward : backward;
+        const apart = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-6;
+        return way.filter((p, i) => apart(p, start) && apart(p, end) && (i === 0 || apart(p, way[i - 1])));
+    }
+
     // What a click at this coordinate should attach to: an existing corner, a
-    // point on an existing border, or open ground.
+    // point on an existing border, the coast, or open ground.
     function snapAt(coordinate) {
         const vertex = nearestVertex(coordinate, SNAP_VERTEX_PX);
         if (vertex) {
@@ -306,6 +441,12 @@
         const edge = nearestEdge(coordinate, SNAP_EDGE_PX);
         if (edge) {
             return { kind: "edge", x: edge.x, y: edge.y };
+        }
+        if (state.coastSnap) {
+            const coast = nearestCoast(coordinate, SNAP_VERTEX_PX);
+            if (coast) {
+                return { kind: "coast", x: coast.x, y: coast.y, coast: { ring: coast.ring, seg: coast.seg, t: coast.t } };
+            }
         }
         return { kind: "free", x: coordinate[0], y: coordinate[1] };
     }
@@ -329,13 +470,13 @@
     }
 
     const HINTS = {
-        select: "Click a state, shape or place to select it. Drag to pan; scroll to zoom.",
+        select: "Click a state, shape or place to select it. Shift-click several states to combine them into a superstate. Drag to pan; scroll to zoom.",
         land: "Click to add corners; double-click to finish. Hold Shift and drag to draw freehand.",
         lake: "Click to add corners; double-click to finish. Hold Shift and drag to draw freehand.",
         river: "Click to add points along the river; double-click to finish. Hold Shift and drag for freehand.",
         reshape: "Drag a corner to move it, drag an edge to add a corner, Alt-click a corner to remove it. Land, lakes and rivers snap to each other.",
-        state: "Click corners. Clicking on a neighbour's border or corner shares it. Double-click or Enter to finish, Backspace to undo a corner, Esc to cancel.",
-        borders: "Drag a corner (shared corners move for every state). Drop a corner on another to weld them. Double-click a border to add a corner; Alt-click a corner to remove it.",
+        state: "Click corners. Clicking on a neighbour's border or corner shares it, and clicking on the coast snaps to it (clicking two points on the coast follows it). Double-click or Enter to finish, Backspace to undo a corner, Esc to cancel.",
+        borders: "Drag a corner (shared corners move for every state; it snaps to the coast). Drop a corner on another to weld them. Double-click a border to add a corner; Alt-click a corner to remove it.",
         place: "Click the map to put a place there.",
         movePlace: "Click the map to move the place to that spot.",
         scale: "Click two points whose real distance you know, then enter it in miles."
@@ -478,10 +619,23 @@
                     return;
                 }
                 dragging.moved = true;
-                state.view.vmap.set(dragging.id, [event.coordinate[0], event.coordinate[1]]);
+
+                // It snaps onto another corner (to be welded) or onto the coast.
+                let at = [event.coordinate[0], event.coordinate[1]];
+                const other = nearestVertex(event.coordinate, SNAP_VERTEX_PX, dragging.id);
+                if (other) {
+                    at = [other.x, other.y];
+                } else if (state.coastSnap) {
+                    const coast = nearestCoast(event.coordinate, SNAP_VERTEX_PX);
+                    if (coast) {
+                        at = [coast.x, coast.y];
+                    }
+                }
+
+                state.view.vmap.set(dragging.id, at);
                 const feature = handleSource.getFeatureById(`v${dragging.id}`);
                 if (feature) {
-                    feature.getGeometry().setCoordinates(event.coordinate);
+                    feature.getGeometry().setCoordinates(at);
                 }
                 queueStateRedraw();
             },
@@ -535,9 +689,15 @@
         const alt = event.originalEvent.altKey;
 
         switch (state.mode) {
-            case "select":
-                selectObject(state.view.pick(event.pixel));
+            case "select": {
+                const picked = state.view.pick(event.pixel);
+                if (event.originalEvent.shiftKey && picked && picked.type === "state") {
+                    toggleMarked(picked.id);
+                } else {
+                    selectObject(picked);
+                }
                 break;
+            }
             case "reshape":
                 break;
             case "state":
@@ -652,7 +812,9 @@
 
         let point = { x: snap.x, y: snap.y };
 
-        if (snap.kind === "vertex") {
+        if (snap.kind === "coast") {
+            point.coast = snap.coast;
+        } else if (snap.kind === "vertex") {
             point.id = snap.id;
         } else if (snap.kind === "edge") {
             // A corner on a neighbour's border has to exist on both sides, so make it now.
@@ -673,6 +835,17 @@
             for (const id of pathAlongBorder(previous.id, point.id)) {
                 const [x, y] = state.view.vmap.get(id);
                 draw.points.push({ id, x, y });
+            }
+        }
+
+        // Between two places on the coast (and not along a shared border), follow the coast.
+        if (state.coastSnap && previous && !(previous.id && point.id)) {
+            const from = previous.coast || coastLocation(previous.x, previous.y);
+            const to = point.coast || coastLocation(point.x, point.y);
+            if ((previous.coast || point.coast) && from && to && from.ring === to.ring) {
+                for (const [x, y] of pathAlongCoast(from, to)) {
+                    draw.points.push({ x, y });
+                }
             }
         }
 
@@ -930,12 +1103,67 @@
     // Selection and the inspector
     // ------------------------------------------------------
 
-    function selectObject(selection) {
+    function selectObject(selection, multi = []) {
         state.selection = selection;
+        state.multi = multi;
         if (state.view) {
-            state.view.select(selection);
+            state.view.select(selection, multi);
         }
         renderInspector();
+        renderStatesTree();
+    }
+
+    // Shift-click: add a state to (or take it from) the states marked together.
+    function toggleMarked(id) {
+        const marked = state.multi.length
+            ? [...state.multi]
+            : state.selection && state.selection.type === "state" ? [state.selection.id] : [];
+        const at = marked.indexOf(id);
+        if (at >= 0) {
+            marked.splice(at, 1);
+        } else {
+            marked.push(id);
+        }
+
+        if (marked.length === 0) {
+            selectObject(null);
+        } else if (marked.length === 1) {
+            selectObject({ type: "state", id: marked[0] });
+        } else {
+            selectObject({ type: "multi" }, marked);
+        }
+    }
+
+    const statesEl = h("div", { class: "box" });
+
+    // All the states as a tree, a superstate with its clients below it.
+    function renderStatesTree() {
+        const bundle = state.bundle;
+        const marked = new Set(state.multi.length ? state.multi : state.selection && state.selection.type === "state" ? [state.selection.id] : []);
+
+        const list = (nodes) => h("ul", { class: "states-tree" }, ...nodes.map((s) =>
+            h("li", {},
+                h("button", {
+                    type: "button",
+                    class: `${marked.has(s.id) ? "active" : ""} ${s.polygons.length === 0 ? "group" : ""}`.trim(),
+                    title: s.polygons.length === 0 ? "A superstate (made of the states below it)" : "",
+                    onclick: (event) => {
+                        if (event.shiftKey || event.ctrlKey || event.metaKey) {
+                            toggleMarked(s.id);
+                        } else {
+                            selectObject({ type: "state", id: s.id });
+                        }
+                    }
+                }, h("span", { class: "swatch", style: `background:${s.color}` }), s.name, s.hidden ? " ·" : ""),
+                s.kids.length ? list(s.kids) : null)));
+
+        const tree = bundle ? MapCore.stateTree(bundle.states) : [];
+        put(statesEl,
+            h("h3", {}, "States"),
+            tree.length
+                ? list(tree)
+                : h("p", { class: "hint" }, "No states yet. Use Draw state."),
+            tree.length ? h("p", { class: "hint" }, "Shift-click (or Ctrl-click) to mark several; then combine them into a superstate.") : null);
     }
 
     const inspectorEl = h("div", { class: "box" });
@@ -1000,28 +1228,61 @@
             return;
         }
 
+        if (selection.type === "multi") {
+            const chosen = state.multi.map((id) => bundle.states.find((x) => x.id === id)).filter(Boolean);
+            add(inspectorEl,
+                h("h3", {}, `${chosen.length} states marked`),
+                h("p", {}, chosen.map((c) => c.name).join(", ")),
+                h("div", { class: "row" },
+                    h("button", { type: "button", class: "primary", onclick: () => combineMarked(chosen) }, "Combine into a new state…"),
+                    h("button", { type: "button", onclick: () => addMarkedToGroup(chosen) }, "Add to a superstate…"),
+                    chosen.some((c) => c.parent_id)
+                        ? h("button", { type: "button", onclick: () => takeOut(chosen) }, "Take out of their superstate")
+                        : null,
+                    h("button", { type: "button", onclick: () => selectObject(null) }, "Clear")),
+                h("p", { class: "hint" }, "Combining keeps every state as it is; the new state is made of them, and exists only while it has some."));
+            return;
+        }
+
         if (selection.type === "state") {
             const s = bundle.states.find((x) => x.id === selection.id);
             if (!s) {
                 return;
             }
+            const isGroup = s.polygons.length === 0;
+            const parent = s.parent_id ? bundle.states.find((x) => x.id === s.parent_id) : null;
+            const clients = bundle.states.filter((x) => x.parent_id === s.id).sort((a, b) => a.name.localeCompare(b.name));
             const colorInput = bindSave(h("input", { type: "color", value: s.color }), (value) => api("PUT", `/api/map-states/${s.id}`, { color: value }));
             const sansInput = bindSave(h("input", { type: "checkbox", checked: Boolean(s.label_sans) }), (value) => api("PUT", `/api/map-states/${s.id}`, { label_sans: value }));
             const hiddenInput = hiddenField(s.hidden, (value) => guarded(async () => { await api("PUT", `/api/map-states/${s.id}`, { hidden: value }); await load(); }));
 
-            add(inspectorEl, 
-                h("h3", {}, "State"),
+            add(inspectorEl,
+                h("h3", {}, isGroup ? "Superstate" : "State"),
                 field("Name", bindSave(h("input", { type: "text", value: s.name }), (value) => api("PUT", `/api/map-states/${s.id}`, { name: value }))),
                 field("Color", colorInput),
                 h("div", { class: "field check" }, sansInput, h("label", {}, "Name is a language word (sans-serif label)")),
                 hiddenInput.element,
+                parent
+                    ? h("p", {},
+                        "Part of ",
+                        h("a", { href: "#", onclick: (event) => { event.preventDefault(); selectObject({ type: "state", id: parent.id }); } }, parent.name),
+                        " ",
+                        h("button", { type: "button", onclick: () => takeOut([s]) }, "Take out"))
+                    : null,
+                isGroup
+                    ? h("div", {},
+                        h("p", { class: "hint" }, "Made of these states (shown on its lore page automatically):"),
+                        h("ul", { class: "states-tree" }, ...clients.map((c) =>
+                            h("li", {}, h("button", { type: "button", onclick: () => selectObject({ type: "state", id: c.id }) },
+                                h("span", { class: "swatch", style: `background:${c.color}` }), c.name)))))
+                    : null,
                 s.page ? h("p", {}, h("a", { href: s.page.url, target: "_blank" }, "Open its lore page ↗")) : h("p", { class: "hint" }, "Its lore page has been detached."),
                 h("div", { class: "row" },
                     h("button", { type: "button", onclick: () => zoomTo(s.id) }, "Zoom to"),
-                    h("button", { type: "button", onclick: () => setMode("borders") }, "Edit borders"),
-                    h("button", { type: "button", onclick: () => drawInto(s.id, "piece") }, "Add island"),
-                    h("button", { type: "button", onclick: () => drawInto(s.id, "hole") }, "Add hole"),
-                    h("button", { type: "button", class: "danger", onclick: () => deleteState(s) }, "Delete")));
+                    isGroup ? null : h("button", { type: "button", onclick: () => setMode("borders") }, "Edit borders"),
+                    isGroup ? null : h("button", { type: "button", onclick: () => drawInto(s.id, "piece") }, "Add island"),
+                    isGroup ? null : h("button", { type: "button", onclick: () => drawInto(s.id, "hole") }, "Add hole"),
+                    h("button", { type: "button", class: "danger", onclick: () => deleteState(s, isGroup) }, isGroup ? "Dissolve" : "Delete")));
             return;
         }
 
@@ -1092,21 +1353,81 @@
         state.view.select(keep);
     }
 
-    async function deleteState(s) {
+    // Says which superstates disappeared because their last client left.
+    function reportRemoved(result, fallback) {
+        const removed = (result && result.removed) || [];
+        say(removed.length
+            ? `${fallback} ${removed.map((n) => `“${n}”`).join(", ")} had no states left, so ${removed.length === 1 ? "it was" : "they were"} removed (the lore ${removed.length === 1 ? "page is" : "pages are"} kept).`
+            : fallback);
+    }
+
+    async function deleteState(s, isGroup = false) {
         const answer = await ask({
-            title: `Delete “${s.name}”?`,
-            okLabel: "Delete state",
+            title: isGroup ? `Dissolve “${s.name}”?` : `Delete “${s.name}”?`,
+            okLabel: isGroup ? "Dissolve" : "Delete state",
             danger: true,
+            extra: isGroup ? h("p", { class: "hint" }, "Its states are kept and stand on their own (or join its own superstate). Only the grouping is removed.") : null,
             fields: [{ key: "deletePage", type: "checkbox", label: "Also delete its lore page (otherwise the page is kept, as an ordinary page)", value: false }]
         });
         if (!answer) {
             return;
         }
         await guarded(async () => {
-            await api("DELETE", `/api/map-states/${s.id}${answer.deletePage ? "?deletePage=1" : ""}`);
+            const result = await api("DELETE", `/api/map-states/${s.id}${answer.deletePage ? "?deletePage=1" : ""}`);
             selectObject(null);
             await load();
-            say("State deleted.");
+            reportRemoved(result, isGroup ? "Dissolved." : "State deleted.");
+        });
+    }
+
+    // ---- superstates ----
+
+    async function combineMarked(chosen) {
+        const answer = await ask({
+            title: "Combine into a new state",
+            okLabel: "Combine",
+            fields: [{ key: "name", label: `Name of the new state made of ${chosen.map((c) => c.name).join(", ")}`, required: true }]
+        });
+        if (!answer) {
+            return;
+        }
+        await guarded(async () => {
+            const result = await api("POST", `/api/maps/${state.mapId}/states/group`, { ids: chosen.map((c) => c.id), name: answer.name });
+            await load();
+            selectObject({ type: "state", id: result.state.id });
+            reportRemoved(result, `“${answer.name}” created, with its page in the States lore category.`);
+        });
+    }
+
+    async function addMarkedToGroup(chosen) {
+        const ids = new Set(chosen.map((c) => c.id));
+        const groups = state.bundle.states.filter((s) => s.polygons.length === 0 && !ids.has(s.id));
+        if (groups.length === 0) {
+            say("There is no superstate to add them to yet. Combine some states first.", "error");
+            return;
+        }
+        const answer = await ask({
+            title: "Add to a superstate",
+            okLabel: "Add",
+            fields: [{ key: "group", label: "Superstate", type: "select", value: groups[0].id, options: groups.map((g) => [g.id, g.name]) }]
+        });
+        if (!answer) {
+            return;
+        }
+        await guarded(async () => {
+            const result = await api("POST", `/api/map-states/${answer.group}/members`, { ids: chosen.map((c) => c.id) });
+            await load();
+            selectObject({ type: "state", id: Number(answer.group) });
+            reportRemoved(result, "Added.");
+        });
+    }
+
+    async function takeOut(chosen) {
+        await guarded(async () => {
+            const result = await api("POST", `/api/maps/${state.mapId}/states/ungroup`, { ids: chosen.map((c) => c.id) });
+            await load();
+            selectObject(chosen.length === 1 ? { type: "state", id: chosen[0].id } : null);
+            reportRemoved(result, "Taken out of their superstate.");
         });
     }
 
@@ -1359,6 +1680,11 @@
                     h("input", { type: "checkbox", id: "follow", checked: state.followBorders, onchange: (event) => { state.followBorders = event.target.checked; } }),
                     h("label", { for: "follow" }, "Follow a neighbour's border between two shared corners"))
                 : null,
+            state.mode === "state" || state.mode === "borders"
+                ? h("div", { class: "field check" },
+                    h("input", { type: "checkbox", id: "coast", checked: state.coastSnap, onchange: (event) => { state.coastSnap = event.target.checked; } }),
+                    h("label", { for: "coast" }, "Snap to the coastline (and follow it between two points)"))
+                : null,
             h("p", { class: "hint" }, HINTS[state.mode] || ""));
     }
 
@@ -1384,10 +1710,11 @@
         renderLayers();
         renderTracers();
         renderInspector();
+        renderStatesTree();
     }
 
     root.replaceChildren(
-        h("div", { class: "map-side" }, mapBoxEl, toolsEl, layersEl, tracersEl, inspectorEl),
+        h("div", { class: "map-side" }, mapBoxEl, toolsEl, inspectorEl, statesEl, layersEl, tracersEl),
         h("div", { class: "map-main" }, viewEl, statusEl));
 
     document.addEventListener("keydown", (event) => {

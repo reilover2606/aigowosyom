@@ -129,6 +129,18 @@ function notesSectionHtml({ heading, intro, emptyText, groups, showBook = false 
     return `<section class="era-notes"><h2>${esc(heading)}</h2>${intro}${body}</section>`;
 }
 
+// The clients of a superstate, as a nested list (generated from the map, so it
+// always agrees with it).
+function clientListHtml(clients) {
+    return `<ul class="state-clients-list">${clients
+        .map(
+            (c) => `<li>${c.url ? `<a href="${esc(c.url)}">${esc(c.name)}</a>` : esc(c.name)}${
+                c.clients.length ? clientListHtml(c.clients) : ""
+            }</li>`
+        )
+        .join("")}</ul>`;
+}
+
 // The notes inside an era.
 function eraNotesHtml(era) {
     const span = era.lengthYears === null
@@ -178,7 +190,14 @@ function articlePage(res, category, page) {
     // Era pages show the span they cover and the calendar notes inside it.
     const stateInfo = page.map_state_id !== null ? maps.stateInfo(page.map_state_id) : null;
     const stateLine = stateInfo
-        ? `<p class="era-span">A state on the map <a href="/maps/${encodeURIComponent(stateInfo.map_slug)}?state=${stateInfo.id}">${esc(stateInfo.map_name)}</a></p>`
+        ? `<p class="era-span">A ${stateInfo.is_group ? "superstate" : "state"} on the map <a href="/maps/${encodeURIComponent(stateInfo.map_slug)}?state=${stateInfo.id}">${esc(stateInfo.map_name)}</a>${
+              stateInfo.parent
+                  ? ` · part of ${stateInfo.parent.url ? `<a href="${esc(stateInfo.parent.url)}">${esc(stateInfo.parent.name)}</a>` : esc(stateInfo.parent.name)}`
+                  : ""
+          }</p>`
+        : "";
+    const clientsSection = stateInfo && stateInfo.is_group && stateInfo.clients.length
+        ? `<section class="state-clients"><h2>Client states</h2>${clientListHtml(stateInfo.clients)}</section>`
         : "";
     const era = page.era_start_year !== null ? eras.eraNotes(page.era_start_year) : null;
     const eraSpan = era
@@ -224,6 +243,7 @@ function articlePage(res, category, page) {
                       : '<div class="lore-body"><p class="muted">This page has no content yet.</p></div>'
             }
             ${era ? eraNotesHtml(era) : ""}
+            ${clientsSection}
             ${book ? bookNotesHtml(book) : ""}
         </article>
         ${aside}

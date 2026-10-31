@@ -56,6 +56,13 @@ module.exports = async function mapsApi(req, res, url) {
             if (sub === "states" && parts.length === 4) {
                 return send(201, maps.createState(id, await readJson(req)));
             }
+            if (sub === "states" && rawSub === "group" && parts.length === 5) {
+                return send(201, maps.groupStates(id, await readJson(req)));
+            }
+            if (sub === "states" && rawSub === "ungroup" && parts.length === 5) {
+                const data = await readJson(req);
+                return send(200, maps.ungroupStates(id, data && data.ids));
+            }
             if (sub === "points" && parts.length === 4) {
                 return send(201, maps.createPoint(id, await readJson(req)));
             }
@@ -91,6 +98,12 @@ module.exports = async function mapsApi(req, res, url) {
             const result = await handlers[method](method === "PUT" ? await readJson(req) : undefined);
             return send(200, result === undefined ? { ok: true } : result);
         }
+    }
+
+    // POST /api/map-states/:id/members  { ids }  (add states to a superstate)
+    if (resource === "map-states" && sub === "members" && parts.length === 4 && method === "POST") {
+        const data = await readJson(req);
+        return send(200, maps.addToGroup(id, data && data.ids));
     }
 
     // POST /api/map-vertices/:id/merge  { into }
