@@ -389,7 +389,8 @@
 
         const riverStyle = (feature, resolution) => {
             const chosen = selectedIs("feature", feature.get("id"));
-            const styles = [new ol.style.Style({
+            // (With the WebGL drawer the river itself is drawn there; only its name is drawn here.)
+            const styles = view.renderer === "webgl" ? [] : [new ol.style.Style({
                 stroke: new ol.style.Stroke({
                     color: chosen ? colors.accent : colors.river,
                     width: chosen ? 4 : 2.5,
@@ -774,7 +775,58 @@
             for (const l of Object.values(view.layers)) {
                 l.changed();
             }
+            if (glDrawer) {
+                glDrawer.changed();
+            }
         }
+
+        // ---- the two drawers: OpenLayers' own canvas drawing, or the WebGL drawer (map-webgl.js) ----
+        // With WebGL the shapes (land, lakes, rivers, states, borders, outlines) are drawn there and the
+        // matching OpenLayers layers are hidden; names, places, elevation and tracer images stay as they are.
+        let glDrawer = null;
+        const GL_DRAWS = ["land", "lakes", "states", "borders", "outlines"];
+        view.renderer = "canvas";
+        view.shown = {};
+
+        function applyShown() {
+            const webgl = view.renderer === "webgl";
+            for (const name of Object.keys(view.layers)) {
+                if (name === "elevation") {
+                    continue;
+                }
+                const wanted = view.shown[name] !== false;
+                if (webgl && GL_DRAWS.includes(name)) {
+                    view.layers[name].setVisible(false);
+                } else if (view.shown[name] !== undefined || GL_DRAWS.includes(name)) {
+                    view.layers[name].setVisible(wanted);
+                }
+            }
+            if (glDrawer) {
+                glDrawer.layers.forEach((l) => l.setVisible(webgl));
+                glDrawer.setShown({
+                    land: view.shown.land,
+                    lakes: view.shown.lakes,
+                    rivers: view.shown.rivers,
+                    states: view.shown.states
+                });
+            }
+        }
+
+        // Chooses the drawer: "canvas" or "webgl". Returns the one now in use (WebGL falls back to
+        // the canvas drawer when this browser can't do it).
+        view.setRenderer = (name) => {
+            if (name === "webgl" && !glDrawer && window.MapGL && MapGL.supported()) {
+                const drawer = MapGL.create({ ol, sources, colors, selectedIs, fillOf, hexAlpha, marked: () => view.marked });
+                if (drawer.working) {
+                    glDrawer = drawer;
+                    drawer.layers.forEach((l) => olMap.addLayer(l));
+                }
+            }
+            view.renderer = name === "webgl" && glDrawer ? "webgl" : "canvas";
+            applyShown();
+            repaint();
+            return view.renderer;
+        };
 
         // ---- the scale bar ----
         const scale = document.createElement("div");
@@ -1016,6 +1068,9 @@
 
         // The shapes under a pixel: points first, then states.
         view.pick = (pixel) => {
+            if (view.renderer === "webgl") {
+                return pickFromSources(pixel);
+            }
             let found = null;
             olMap.forEachFeatureAtPixel(
                 pixel,
@@ -1034,6 +1089,57 @@
             );
             return found;
         };
+
+        // The same answer as above when the OpenLayers layers aren't drawn (so can't be hit-tested):
+        // places through their layer, then, top to bottom, states, rivers, lakes, land and sea outlines.
+        function pickFromSources(pixel) {
+            let found = null;
+            olMap.forEachFeatureAtPixel(
+                pixel,
+                (feature) => {
+                    if (feature.get("id") !== undefined && !found) {
+                        found = { type: "point", id: feature.get("id") };
+                    }
+                },
+                { hitTolerance: 4, layerFilter: (l) => l === view.layers.points }
+            );
+            if (found) {
+                return found;
+            }
+
+            const coordinate = olMap.getCoordinateFromPixel(pixel);
+            const tolerance = 4 * olView.getResolution();
+            const near = ol.extent.buffer([coordinate[0], coordinate[1], coordinate[0], coordinate[1]], tolerance);
+            const shown = (name) => view.shown[name] !== false;
+            const onLine = (geometry) => {
+                const closest = geometry.getClosestPoint(coordinate);
+                return Math.hypot(closest[0] - coordinate[0], closest[1] - coordinate[1]) <= tolerance;
+            };
+            const first = (source, test, type) => {
+                const features = source.getFeaturesInExtent(near).filter((f) => f.get("id") !== undefined && test(f.getGeometry()));
+                const feature = features[features.length - 1]; // the one drawn last is on top
+                return feature ? { type, id: feature.get("id") } : null;
+            };
+
+            if (shown("states")) {
+                found = first(sources.states, (g) => g.intersectsCoordinate(coordinate), "state");
+            }
+            if (!found && editable) {
+                if (shown("rivers")) {
+                    found = first(sources.rivers, onLine, "feature");
+                }
+                if (!found && shown("lakes")) {
+                    found = first(sources.lakes, (g) => g.intersectsCoordinate(coordinate) || onLine(g), "feature");
+                }
+                if (!found && shown("land")) {
+                    found = first(sources.land, (g) => g.intersectsCoordinate(coordinate) || onLine(g), "feature");
+                }
+                if (!found && shown("oceans")) {
+                    found = first(sources.oceans, onLine, "feature");
+                }
+            }
+            return found;
+        }
 
         // Tracer images (editor), each under everything else.
         view.setImages = (images) => {
@@ -1056,7 +1162,10 @@
             });
         };
 
-        view.show = (name, visible) => view.layers[name].setVisible(visible);
+        view.show = (name, visible) => {
+            view.shown[name] = visible;
+            applyShown();
+        };
 
         // River, lake and sea names on or off.
         view.setWaterNames = (on) => {
@@ -1080,6 +1189,9 @@
         }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-mode"] });
 
         rebuild(bundle);
+        if (savedRenderer() === "webgl") {
+            view.setRenderer("webgl");
+        }
         // The fit needs the element's size.
         requestAnimationFrame(() => {
             olMap.updateSize();
@@ -1125,6 +1237,45 @@
     const STATUS_NAMES = {
         capital: "Capital state", province: "Province", region: "Region", vassal: "Vassal", march: "March", territory: "Territory"
     };
+
+    // Which drawer the maps use: "canvas" (OpenLayers' own) or "webgl" (map-webgl.js).
+    const RENDERER_KEY = "mapRenderer";
+
+    function savedRenderer() {
+        try {
+            return localStorage.getItem(RENDERER_KEY) === "webgl" ? "webgl" : "canvas";
+        } catch (error) {
+            return "canvas";
+        }
+    }
+
+    // A small "Drawing: standard / WebGL" choice for a view (shared by the viewer and the editor).
+    function rendererControl(view) {
+        const select = document.createElement("select");
+        const options = [["canvas", "Standard"], ["webgl", window.MapGL && MapGL.supported() ? "WebGL (faster on big maps)" : "WebGL (not available here)"]];
+        for (const [value, label] of options) {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = label;
+            if (value === "webgl" && !(window.MapGL && MapGL.supported())) {
+                option.disabled = true;
+            }
+            select.append(option);
+        }
+        select.value = view.renderer;
+        select.addEventListener("change", () => {
+            select.value = view.setRenderer(select.value);
+            try {
+                localStorage.setItem(RENDERER_KEY, select.value);
+            } catch (error) {
+                // not remembered
+            }
+        });
+        const label = document.createElement("label");
+        label.className = "renderer-choice";
+        label.append("Drawing: ", select);
+        return label;
+    }
 
     // Fetches a map's elevation grid ({ cols, rows, cell, data }), or null if it has none.
     async function loadElevation(meta, mapId) {
@@ -1205,7 +1356,7 @@
 
     window.MapCore = {
         elevationControls, savedElevationStyle,
-        create, colors, readColors, hexAlpha, stateCoordinates, vertexMap, stateTree, approx, STATUS_NAMES,
+        create, savedRenderer, rendererControl, colors, readColors, hexAlpha, stateCoordinates, vertexMap, stateTree, approx, STATUS_NAMES,
         loadElevation, elevationShade, elevationKey, NO_LAND, feetText
     };
 })();

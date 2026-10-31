@@ -132,7 +132,11 @@
     }
 
     // Elevation: shown on request, as a tint (grayscale or colours) and/or relief shading.
-    function addElevationOption() {
+    // Above the map: how it is drawn (standard or WebGL) and, if the map has elevation, how that is shown.
+    function addOptions() {
+        const options = el("div", { class: "map-options" }, MapCore.rendererControl(view));
+        document.querySelector(".map-layout").before(options);
+
         if (!bundle.elevation) {
             return;
         }
@@ -148,8 +152,7 @@
 
         const initial = MapCore.savedElevationStyle();
         const controls = MapCore.elevationControls(initial, apply);
-        const options = el("div", { class: "map-options" }, controls.element, el("span", { class: "muted" }, " · point at the land for its height"));
-        document.querySelector(".map-layout").before(options);
+        options.append(" · ", controls.element, el("span", { class: "muted" }, " · point at the land for its height"));
 
         if (initial.tint !== "none" || initial.relief) {
             apply(initial);
@@ -162,7 +165,7 @@
             bundle = data;
             view = MapCore.create({ target, bundle, editable: false, fullscreen: document.querySelector(".map-layout") });
             overview();
-            addElevationOption();
+            addOptions();
 
             view.ol.on("singleclick", (event) => choose(view.pick(event.pixel), false));
             view.ol.on("pointermove", (event) => {

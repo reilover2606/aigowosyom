@@ -1929,7 +1929,8 @@
                     applyLayerVisibility();
                 } }),
                 h("label", { for: `layer-${key}` }, label))),
-            h("div", { class: "field elevation-field" }, elevationControls.element));
+            h("div", { class: "field elevation-field" }, elevationControls.element),
+            state.view ? h("div", { class: "field" }, MapCore.rendererControl(state.view)) : null);
     }
 
     // ------------------------------------------------------
