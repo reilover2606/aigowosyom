@@ -510,9 +510,13 @@
 
     const DRAWING_MODES = ["land", "lake", "river", "ocean", "state", "place", "movePlace", "scale", "elevate", "smooth"];
 
+    // The shape being drawn with the land, lake, river or sea tool (Esc abandons it).
+    let activeDraw = null;
+
     function setMode(mode) {
         cancelDrawing();
         stopInteractions();
+        activeDraw = null;
         state.mode = mode;
         state.scalePoints = [];
         sketchSource.clear();
@@ -532,6 +536,7 @@
                     style: (feature) => sketchStyle(new ol.Feature({ kind: "line" }))
                 });
                 draw.on("drawend", (event) => finishShape(mode, event.feature));
+                activeDraw = draw;
                 addInteraction(draw);
                 addInteraction(new ol.interaction.Snap({ source: view.sources.land }));
             } else if (mode === "reshape") {
@@ -1333,14 +1338,12 @@
             const parent = s.parent_id ? bundle.states.find((x) => x.id === s.parent_id) : null;
             const clients = bundle.states.filter((x) => x.parent_id === s.id).sort((a, b) => a.name.localeCompare(b.name));
             const colorInput = bindSave(h("input", { type: "color", value: s.color }), (value) => api("PUT", `/api/map-states/${s.id}`, { color: value }));
-            const sansInput = bindSave(h("input", { type: "checkbox", checked: Boolean(s.label_sans) }), (value) => api("PUT", `/api/map-states/${s.id}`, { label_sans: value }));
             const hiddenInput = hiddenField(s.hidden, (value) => guarded(async () => { await api("PUT", `/api/map-states/${s.id}`, { hidden: value }); await load(); }));
 
             add(inspectorEl,
                 h("h3", {}, isGroup ? "Superstate" : "State"),
                 field("Name", bindSave(h("input", { type: "text", value: s.name }), (value) => api("PUT", `/api/map-states/${s.id}`, { name: value }))),
                 field("Color", colorInput),
-                h("div", { class: "field check" }, sansInput, h("label", {}, "Name is a language word (sans-serif label)")),
                 hiddenInput.element,
                 parent
                     ? h("p", {},
@@ -2384,6 +2387,29 @@
         }
     });
 
+    // Esc abandons whatever is being drawn: a piece of land, lake, river or sea outline, a state
+    // (or the island or hole about to be added to one), or a distance being measured.
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || document.querySelector("dialog[open]")) {
+            return;
+        }
+        if (["land", "lake", "river", "ocean"].includes(state.mode) && activeDraw) {
+            activeDraw.abortDrawing();
+            say("Cancelled.");
+        } else if (state.mode === "state" && state.draw) {
+            cancelDrawing();
+            state.drawTarget = null;
+            say("Cancelled.");
+        } else if (state.mode === "state" && state.drawTarget) {
+            setMode("select");
+            say("Cancelled.");
+        } else if (state.mode === "scale" && (state.scalePoints || []).length) {
+            state.scalePoints = [];
+            sketchSource.clear();
+            say("Cancelled.");
+        }
+    });
+
     document.addEventListener("keydown", (event) => {
         if (state.mode !== "state" || !state.draw || ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {
             return;
@@ -2391,9 +2417,6 @@
         if (event.key === "Enter") {
             event.preventDefault();
             finishState();
-        } else if (event.key === "Escape") {
-            cancelDrawing();
-            say("Cancelled.");
         } else if (event.key === "Backspace") {
             event.preventDefault();
             state.draw.points.pop();

@@ -57,7 +57,7 @@
             const stats = s.stats && s.stats.area_sq_mi > 0 ? s.stats : null;
             return el("div", {},
                 el("h2", {}, el("span", { class: "swatch", style: `background:${s.color}` }),
-                    el("span", { class: `state-name${s.label_sans ? " sans conlang" : ""}` }, s.name)),
+                    el("span", { class: "state-name" }, s.name)),
                 parent
                     ? el("p", { class: "muted" }, `${statusOf(s)} of `,
                         el("a", { href: "#", onclick: (event) => { event.preventDefault(); choose({ type: "state", id: parent.id }, true); } }, parent.name))

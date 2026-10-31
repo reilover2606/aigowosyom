@@ -4,7 +4,7 @@
 // x runs right and y runs up, over [0, width] x [0, height]. The bundle from
 // /api/maps/:id says what is on it. Colors come from CSS variables
 // (--map-*, see maps.css), so every theme restyles the map; labels use the
-// site's serif and sans fonts.
+// site's serif font.
 (() => {
     "use strict";
 
@@ -285,6 +285,13 @@
     // Building a map view
     // ------------------------------------------------------
 
+    // Keys that move the map: not with a modifier held, not while typing, not behind a dialog.
+    const mapKeys = ol.events.condition.all(
+        ol.events.condition.noModifierKeys,
+        ol.events.condition.targetNotEditable,
+        () => !document.querySelector("dialog[open]")
+    );
+
     function create({ target, bundle, editable = false }) {
         const view = { editable, bundle: null, vmap: null, selected: null, marked: new Set(), children: new Map(), waterNames: true, listeners: {} };
         const map = bundle.map;
@@ -446,7 +453,7 @@
             // A superstate's name is placed first, so it takes the place of its clients' names.
             return nameText({
                 text, px, alpha,
-                family: feature.get("sans") ? colors.sans : colors.serif,
+                family: colors.serif, // state names are proper nouns, set like the rest of the text
                 color: colors.label,
                 halo: colors.halo,
                 zIndex: group ? 10 : 5, // where names collide, the higher z-index keeps its place (and, level, the one drawn first)
@@ -510,9 +517,19 @@
             view: olView,
             layers: Object.values(view.layers),
             controls: ol.control.defaults.defaults({ attribution: false, rotate: false }),
-            interactions: editable
-                ? ol.interaction.defaults.defaults({ doubleClickZoom: false, altShiftDragRotate: false, pinchRotate: false })
-                : ol.interaction.defaults.defaults({ altShiftDragRotate: false, pinchRotate: false })
+            // The arrow keys pan (and + and - zoom) wherever the page's focus is, except while typing
+            // in a field, using a slider, or with a dialog open.
+            keyboardEventTarget: document,
+            interactions: ol.interaction.defaults
+                .defaults(
+                    editable
+                        ? { doubleClickZoom: false, altShiftDragRotate: false, pinchRotate: false, keyboard: false }
+                        : { altShiftDragRotate: false, pinchRotate: false, keyboard: false }
+                )
+                .extend([
+                    new ol.interaction.KeyboardPan({ condition: mapKeys, pixelDelta: 160 }),
+                    new ol.interaction.KeyboardZoom({ condition: mapKeys })
+                ])
         });
         view.ol = olMap;
         view.olView = olView;
@@ -596,7 +613,7 @@
                     continue;
                 }
                 const geometry = new ol.geom.MultiPolygon(coordinates);
-                const feature = new ol.Feature({ geometry, id: s.id, name: s.name, color: s.color, sans: s.label_sans });
+                const feature = new ol.Feature({ geometry, id: s.id, name: s.name, color: s.color });
                 feature.setId(`state-${s.id}`);
                 sources.states.addFeature(feature);
 
@@ -610,7 +627,7 @@
                 const box = biggest.getExtent();
                 const label = new ol.Feature({
                     geometry: new ol.geom.Point(biggest.getInteriorPoint().getCoordinates().slice(0, 2)),
-                    id: s.id, name: s.name, sans: s.label_sans, span: box[2] - box[0], capital: s.status === "capital",
+                    id: s.id, name: s.name, span: box[2] - box[0], capital: s.status === "capital",
                     rank: nameSize(box[2] - box[0], s.name.length)
                 });
                 sources.labels.addFeature(label);
@@ -650,7 +667,7 @@
                 if (box) {
                     sources.labels.addFeature(new ol.Feature({
                         geometry: new ol.geom.Point([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]),
-                        id: group.id, name: group.name, sans: group.label_sans, span: box[2] - box[0], group: true,
+                        id: group.id, name: group.name, span: box[2] - box[0], group: true,
                         rank: nameSize(box[2] - box[0], group.name.length) * 1.5
                     }));
                 }
