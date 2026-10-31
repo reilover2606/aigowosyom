@@ -46,7 +46,7 @@
                                     collapsed.has(s.id) ? collapsed.delete(s.id) : collapsed.add(s.id);
                                     overview();
                                 }
-                            }, collapsed.has(s.id) ? "▸" : "▾")
+                            }, Icons.el(collapsed.has(s.id) ? "chevronright" : "chevrondown"))
                             : el("span", { class: "fold-spacer" }),
                         el("button", { type: "button", onclick: () => choose({ type: "state", id: s.id }, true) },
                             el("span", { class: "swatch", style: `background:${s.color}` }), s.name,
@@ -79,7 +79,7 @@
                         el("a", { href: "#", onclick: (event) => { event.preventDefault(); choose({ type: "state", id: parent.id }, true); } }, parent.name))
                     : null,
                 s.page && s.page.excerpt ? el("p", {}, s.page.excerpt) : null,
-                s.page ? el("p", {}, el("a", { href: s.page.url }, "Read about it →")) : null,
+                s.page ? el("p", {}, el("a", { href: s.page.url }, "Read about it ", Icons.el("arrowright"))) : null,
                 stats
                     ? el("div", { class: "stats" },
                         el("h3", {}, "Statistics (approximate)"),
@@ -104,7 +104,7 @@
         return el("div", {},
             el("h2", {}, p.name),
             el("p", { class: "muted" }, p.kind),
-            p.page ? el("p", {}, el("a", { href: p.page.url }, `${p.page.title} →`)) : null);
+            p.page ? el("p", {}, el("a", { href: p.page.url }, `${p.page.title} `, Icons.el("arrowright"))) : null);
     }
 
     function choose(selection, zoom) {
@@ -118,7 +118,7 @@
 
         info.replaceChildren(
             describe(selection),
-            el("p", {}, el("button", { type: "button", onclick: () => choose(null) }, "← All states")));
+            el("p", {}, el("button", { type: "button", onclick: () => choose(null) }, Icons.el("arrowleft"), " All states")));
 
         if (selection.type === "state") {
             history.replaceState(null, "", `${location.pathname}?state=${selection.id}`);

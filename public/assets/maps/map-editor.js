@@ -1392,7 +1392,7 @@
                             state.collapsed.has(s.id) ? state.collapsed.delete(s.id) : state.collapsed.add(s.id);
                             renderStatesTree();
                         }
-                    }, state.collapsed.has(s.id) ? "▸" : "▾")
+                    }, Icons.el(state.collapsed.has(s.id) ? "chevronright" : "chevrondown"))
                     : h("span", { class: "fold-spacer" }),
                 h("button", {
                     type: "button",
@@ -1532,7 +1532,7 @@
                             h("li", {}, h("button", { type: "button", onclick: () => selectObject({ type: "state", id: c.id }) },
                                 h("span", { class: "swatch", style: `background:${c.color}` }), c.name)))))
                     : null,
-                s.page ? h("p", {}, h("a", { href: s.page.url, target: "_blank" }, "Open its lore page ↗")) : h("p", { class: "hint" }, "Its lore page has been detached."),
+                s.page ? h("p", {}, h("a", { href: s.page.url, target: "_blank" }, "Open its lore page ", Icons.el("external"))) : h("p", { class: "hint" }, "Its lore page has been detached."),
                 h("div", { class: "row" },
                     h("button", { type: "button", onclick: () => zoomTo(s.id) }, "Zoom to"),
                     isGroup ? null : h("button", { type: "button", onclick: () => setMode("borders") }, "Edit borders"),
@@ -1578,7 +1578,7 @@
                 field("Name", bindSave(h("input", { type: "text", value: p.name }), (value) => api("PUT", `/api/map-points/${p.id}`, { name: value }))),
                 field("Kind", bindSave(h("select", {}, ...PLACE_KINDS.map((k) => h("option", { value: k, selected: k === p.kind }, k))), (value) => api("PUT", `/api/map-points/${p.id}`, { kind: value }))),
                 h("p", {},
-                    p.page ? h("a", { href: p.page.url, target: "_blank" }, `${p.page.title} ↗`) : h("span", { class: "hint" }, "No lore page linked."),
+                    p.page ? h("a", { href: p.page.url, target: "_blank" }, `${p.page.title} `, Icons.el("external")) : h("span", { class: "hint" }, "No lore page linked."),
                     " ",
                     h("button", { type: "button", onclick: () => linkPlace(p) }, p.page ? "Change link" : "Link a page…")),
                 hiddenInput.element,
@@ -2514,7 +2514,7 @@
             h("div", { class: "row" },
                 h("button", { type: "button", class: "primary", onclick: () => mapDialog(null) }, "New map"),
                 h("button", { type: "button", disabled: !map, onclick: () => mapDialog(map) }, "Map settings"),
-                map ? h("a", { href: `/maps/${encodeURIComponent(map.slug)}`, target: "_blank" }, "View ↗") : null),
+                map ? h("a", { href: `/maps/${encodeURIComponent(map.slug)}`, target: "_blank" }, "View ", Icons.el("external")) : null),
             map ? h("p", { class: "hint" },
                 `${map.width} × ${map.height} map units · 1 unit = ${Number(map.miles_per_unit.toPrecision(4))} mi · about ${Math.round(map.width * map.miles_per_unit).toLocaleString()} mi wide`) : null,
             map ? h("div", { class: "row" }, h("button", { type: "button", class: "danger", onclick: deleteMap }, "Delete this map")) : null);

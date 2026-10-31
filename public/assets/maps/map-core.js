@@ -292,6 +292,88 @@
         () => !document.querySelector("dialog[open]:not(.choosing)")
     );
 
+    // The arrow keys pan the map, wherever the page's focus is (so clicking outside the map doesn't
+    // hand them to the page, which would scroll it). The movement is eased: it speeds up while a key
+    // is held and slows to a stop when it is released, and doesn't wait for the keyboard's repeat.
+    // They are left alone while typing in a field, using a slider or a list, or with a dialog open.
+    const PAN_SPEED = 950; // px per second at full speed
+    const PAN_RAMP_UP = 0.22; // seconds from rest to full speed
+    const PAN_RAMP_DOWN = 0.16; // ...and from full speed to rest
+    const PAN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
+    const PAN_OWNERS = ["INPUT", "TEXTAREA", "SELECT"];
+
+    function panAllowed(event) {
+        if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+            return false;
+        }
+        const target = event.target;
+        if (target && (PAN_OWNERS.includes(target.tagName) || target.isContentEditable)) {
+            // A checkbox, radio or button has no use for the arrow keys; text, number, range and select do.
+            const type = target.type || "";
+            if (!["checkbox", "radio", "button", "submit", "reset", "file", "color"].includes(type) || target.tagName !== "INPUT") {
+                return false;
+            }
+        }
+        return !document.querySelector("dialog[open]:not(.choosing)");
+    }
+
+    // One set of key listeners for the page; they steer the map made last (an editor makes a new one per map).
+    let panning = null;
+
+    function keyboardPan(olView, olMap) {
+        if (panning) {
+            panning.olView = olView;
+            panning.olMap = olMap;
+            panning.velocity = [0, 0];
+            panning.held.clear();
+            return;
+        }
+        const p = (panning = { olView, olMap, held: new Set(), velocity: [0, 0], frame: null, last: 0 });
+
+        const step = (now) => {
+            const dt = Math.min((now - p.last) / 1000, 0.05);
+            p.last = now;
+            let wanted = [0, 0];
+            for (const key of p.held) {
+                wanted = [wanted[0] + PAN_KEYS[key][0], wanted[1] + PAN_KEYS[key][1]];
+            }
+            const length = Math.hypot(wanted[0], wanted[1]);
+            if (length > 0) {
+                wanted = [(wanted[0] / length) * PAN_SPEED, (wanted[1] / length) * PAN_SPEED];
+            }
+            p.velocity = p.velocity.map((v, i) => {
+                const rate = (wanted[i] === 0 ? PAN_SPEED / PAN_RAMP_DOWN : PAN_SPEED / PAN_RAMP_UP) * dt;
+                return Math.abs(wanted[i] - v) <= rate ? wanted[i] : v + Math.sign(wanted[i] - v) * rate;
+            });
+
+            if (p.velocity[0] !== 0 || p.velocity[1] !== 0) {
+                const center = p.olView.getCenter();
+                const resolution = p.olView.getResolution();
+                p.olView.setCenter([center[0] + p.velocity[0] * dt * resolution, center[1] + p.velocity[1] * dt * resolution]);
+            }
+            p.frame = p.held.size || p.velocity[0] !== 0 || p.velocity[1] !== 0 ? requestAnimationFrame(step) : null;
+        };
+
+        // In the capture phase, so the page never gets the key (and doesn't scroll).
+        document.addEventListener("keydown", (event) => {
+            const element = p.olMap.getTargetElement();
+            if (PAN_KEYS[event.key] && element && document.contains(element) && panAllowed(event)) {
+                event.preventDefault();
+                p.held.add(event.key);
+                if (p.frame === null) {
+                    p.last = performance.now();
+                    p.frame = requestAnimationFrame(step);
+                }
+            }
+        }, true);
+        document.addEventListener("keyup", (event) => {
+            if (p.held.delete(event.key)) {
+                event.preventDefault();
+            }
+        }, true);
+        window.addEventListener("blur", () => p.held.clear());
+    }
+
     function create({ target, bundle, editable = false, fullscreen = null }) {
         const view = { editable, bundle: null, vmap: null, selected: null, marked: new Set(), children: new Map(), waterNames: true, listeners: {} };
         const map = bundle.map;
@@ -578,11 +660,11 @@
                         : { altShiftDragRotate: false, pinchRotate: false, keyboard: false }
                 )
                 .extend([
-                    new ol.interaction.KeyboardPan({ condition: mapKeys, pixelDelta: 160 }),
                     new ol.interaction.KeyboardZoom({ condition: mapKeys })
                 ])
         });
         view.ol = olMap;
+        keyboardPan(olView, olMap);
         olMap.on("movestart", () => {
             moving = true;
             view.layers.borders.changed();
@@ -601,7 +683,7 @@
             button.className = "map-fullscreen";
             const sync = () => {
                 const on = document.fullscreenElement === fullscreen;
-                button.textContent = on ? "⤡" : "⤢";
+                button.replaceChildren(Icons.el(on ? "minimize" : "maximize"));
                 button.title = on ? "Leave full screen" : "Full screen";
                 button.setAttribute("aria-label", button.title);
                 olMap.updateSize();
@@ -745,6 +827,19 @@
                 }
                 return depth;
             };
+            // A state with no superstate (independent) has a solid outline in its colour too, like a
+            // superstate; the dotted line stays for the borders between a superstate's clients.
+            for (const s of leaves) {
+                if (s.parent_id && view.byId.has(s.parent_id)) {
+                    continue;
+                }
+                for (const chain of outlineChains(edges, new Set([s.id]), view.vmap)) {
+                    if (chain.length > 1) {
+                        sources.outlines.addFeature(new ol.Feature({ geometry: new ol.geom.LineString(chain), color: s.color, groupId: s.id, depth: 0 }));
+                    }
+                }
+            }
+
             // Outer superstates first, so the inner ones are drawn over them (thinner).
             const groups = all.filter((s) => s.polygons.length === 0).sort((a, b) => depthOf(a) - depthOf(b));
             for (const group of groups) {
@@ -1243,10 +1338,15 @@
 
     function savedRenderer() {
         try {
-            return localStorage.getItem(RENDERER_KEY) === "webgl" ? "webgl" : "canvas";
+            const saved = localStorage.getItem(RENDERER_KEY);
+            if (saved === "webgl" || saved === "canvas") {
+                return saved;
+            }
         } catch (error) {
-            return "canvas";
+            // not remembered
         }
+        // WebGL unless the browser can't (or the user chose otherwise).
+        return window.MapGL && MapGL.supported() ? "webgl" : "canvas";
     }
 
     // A small "Drawing: standard / WebGL" choice for a view (shared by the viewer and the editor).
