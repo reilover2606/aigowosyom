@@ -40,6 +40,9 @@
         interactions: []
     };
 
+    let gapRequest = 0; // for the preview of a gap under the cursor
+    let gapTimer = null;
+
     // ------------------------------------------------------
     // Small UI helpers
     // ------------------------------------------------------
@@ -508,7 +511,7 @@
         elevate: "Press on the land and drag UP to raise it, DOWN to lower it: the land around is pulled along. A wide, soft brush makes hills and gradual slopes; a sharp one makes mountains.",
         smooth: "Paint over the land to even out its elevation (softening ridges and valleys).",
         reshape: "Drag a corner to move it, drag an edge to add a corner, Alt-click a corner to remove it. Land, lakes and rivers snap to each other.",
-        state: "Click corners. Clicking on a neighbour's border or corner shares it, and clicking on the coast snaps to it (clicking two points on the coast follows it). Enter completes the state along existing borders and the coast (if two states would fit, click the one you want); double-click or Shift+Enter closes it with a straight line. Backspace undoes a corner, Esc cancels.",
+        state: "Click corners. Clicking on a neighbour's border or corner shares it, and clicking on the coast snaps to it (clicking two points on the coast follows it). Enter completes the state along existing borders and the coast (if two states would fit, click the one you want); double-click or Shift+Enter closes it with a straight line. Backspace undoes a corner, Esc cancels. To fill a gap that borders and the coast already close off (between states, or a hole inside one), hold Alt over it and click.",
         borders: "Drag a corner (shared corners move for every state; it snaps to the coast). Drop a corner on another to weld them. Double-click a border to add a corner; Alt-click a corner to remove it.",
         place: "Click the map to put a place there.",
         movePlace: "Click the map to move the place to that spot.",
@@ -783,6 +786,10 @@
                     chooseCandidate(event.coordinate);
                     break;
                 }
+                if (event.originalEvent.altKey && !(state.draw && state.draw.points.length)) {
+                    queueDraw(() => fillGap(event.coordinate));
+                    break;
+                }
                 queueDraw(() => addDrawPoint(event.coordinate));
                 break;
             case "borders":
@@ -822,6 +829,8 @@
         }
         if (state.mode === "state" && state.choosing) {
             hoverCandidate(event.coordinate);
+        } else if (state.mode === "state" && event.originalEvent.altKey && !(state.draw && state.draw.points.length)) {
+            previewGap(event.coordinate);
         } else if (state.mode === "state" || state.mode === "scale") {
             updateRubber(event.coordinate);
         } else if (state.mode === "elevate" || state.mode === "smooth") {
@@ -956,6 +965,8 @@
     }
 
     function renderSketch(cursor) {
+        gapRequest++; // a pending gap preview is out of date
+        clearTimeout(gapTimer);
         sketchSource.clear();
         const points = state.draw ? state.draw.points : [];
         const snap = cursor ? snapAt(cursor) : null;
@@ -1037,6 +1048,40 @@
             }
             openChoosing(found);
         });
+    }
+
+    // A gap is free land that existing borders and the coast already close off (between states,
+    // or a hole inside one): Alt-click it to make it a state, with no line to draw.
+    async function fillGap(coordinate) {
+        const result = await api("POST", `/api/maps/${state.mapId}/complete`, { at: [coordinate[0], coordinate[1]] });
+        if (!result.candidates || !result.candidates.length) {
+            say(result.message || "That isn't a gap.", "error");
+            return;
+        }
+        if (!state.draw) {
+            state.draw = { points: [], target: state.drawTarget || null };
+        }
+        await finishStateNow(result.candidates[0]);
+    }
+
+    // Holding Alt over a gap outlines it.
+    function previewGap(coordinate) {
+        const ticket = ++gapRequest;
+        clearTimeout(gapTimer);
+        gapTimer = setTimeout(async () => {
+            try {
+                const result = await api("POST", `/api/maps/${state.mapId}/complete`, { at: [coordinate[0], coordinate[1]] });
+                if (ticket !== gapRequest || state.mode !== "state" || (state.draw && state.draw.points.length) || state.choosing) {
+                    return;
+                }
+                sketchSource.clear();
+                for (const c of result.candidates || []) {
+                    sketchSource.addFeature(new ol.Feature({ geometry: new ol.geom.Polygon([c.outline]), kind: "candidate", hot: true }));
+                }
+            } catch (error) {
+                // a preview only
+            }
+        }, 80);
     }
 
     function openChoosing(candidates) {
