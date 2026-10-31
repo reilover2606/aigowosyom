@@ -4,6 +4,8 @@
 
 const { db } = require("../lib/db");
 const books = require("../lib/books");
+const calendar = require("../lib/calendar");
+const { excerpt } = require("../lib/html");
 const { HttpError, sendJson, readJson, parseInteger } = require("../lib/http");
 
 // A note with the book it is assigned to (if any).
@@ -26,8 +28,67 @@ const stmt = {
     update: db.prepare(
         "UPDATE notes SET day = ?, title = ?, body = ?, book_id = ?, updated_at = ? WHERE id = ?"
     ),
-    remove: db.prepare("DELETE FROM notes WHERE id = ?")
+    remove: db.prepare("DELETE FROM notes WHERE id = ?"),
+    inRange: db.prepare("SELECT id, day, title, body FROM notes WHERE day BETWEEN ? AND ? ORDER BY day, id"),
+    moveDay: db.prepare("UPDATE notes SET day = ?, updated_at = ? WHERE id = ?")
 };
+
+// How a note reads in a list of exceptions: its title, else the start of its text.
+const noteName = (note) => note.title || excerpt(note.body, 40);
+
+// A year number from a request: a whole number from 1 up.
+function parseYear(value, label) {
+    const year = Number(value);
+
+    if (!Number.isSafeInteger(year) || year < 1 || year > 1000000) {
+        throw new HttpError(400, `Invalid ${label} year`);
+    }
+
+    return year;
+}
+
+// Moves every note in year `from` to the same month and day-in-month of year
+// `to`. A day past the end of the new month is shortened to its last day; a
+// note whose month has no days in the new year stays where it is. With
+// `dryRun` nothing is changed, so the caller can preview. All-or-nothing.
+const moveYear = db.transaction((from, to, dryRun) => {
+    const range = calendar.yearDayRange(from);
+    const notes = stmt.inRange.all(range.first, range.last);
+    const updates = [];
+    const shortened = [];
+    const blocked = [];
+
+    for (const note of notes) {
+        const date = calendar.describeDay(note.day);
+        const plan = calendar.planDayInYear(to, date.monthIndex, date.dayInMonth);
+
+        if (!plan.ok) {
+            blocked.push({ id: note.id, title: noteName(note), monthName: date.monthName, dayInMonth: date.dayInMonth });
+            continue;
+        }
+
+        updates.push([plan.day, note.id]);
+
+        if (plan.clamped) {
+            shortened.push({
+                id: note.id,
+                title: noteName(note),
+                monthName: date.monthName,
+                dayInMonth: date.dayInMonth,
+                movedToDay: plan.dayInMonth
+            });
+        }
+    }
+
+    if (!dryRun) {
+        const now = Date.now();
+        for (const [day, id] of updates) {
+            stmt.moveDay.run(day, now, id);
+        }
+    }
+
+    return { from, to, dryRun, total: notes.length, moving: updates.length, shortened, blocked };
+});
 
 // Validates a note payload; returns { day, title, body, bookId }. `bookId` is
 // null (no book), a book's id, or undefined when the payload doesn't mention
@@ -69,6 +130,20 @@ module.exports = async function calendarRoutes(req, res, url) {
 
     const parts = url.pathname.split("/").filter(Boolean); // ["api", "notes", ...]
     const method = req.method;
+
+    // POST /api/notes/move-year  { from, to, dryRun? }  -> what moved (or would)
+    if (parts.length === 3 && parts[2] === "move-year" && method === "POST") {
+        const data = await readJson(req);
+        const from = parseYear(data && data.from, "source");
+        const to = parseYear(data && data.to, "target");
+
+        if (from === to) {
+            throw new HttpError(400, "Choose a different year to move the notes to");
+        }
+
+        sendJson(res, 200, moveYear(from, to, data.dryRun === true));
+        return true;
+    }
 
     // GET /api/notes/counts?from=&to=  ->  { "<day>": count, ... }
     if (parts.length === 3 && parts[2] === "counts" && method === "GET") {
