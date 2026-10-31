@@ -9,9 +9,9 @@
  */
 
 :root {
-    --font-serif: Georgia, "Times New Roman", "Noto Serif", "Source Serif Pro",
+    --font-serif: "Times New Roman", Times, "Noto Serif", "Source Serif Pro",
         "Noto Serif CJK JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
-    --font-sans: "Segoe UI", "Helvetica Neue", Arial, "Noto Sans",
+    --font-sans: Helvetica, "Helvetica Neue", Arial, "Noto Sans",
         "Noto Sans CJK JP", "Hiragino Sans", "Yu Gothic", "Microsoft YaHei",
         "DejaVu Sans", "Lucida Sans Unicode", sans-serif;
 }
