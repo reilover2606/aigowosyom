@@ -812,7 +812,8 @@
             slugTouched: true,
             categoryId: page.category_id,
             body: page.body,
-            isEra: Boolean(page.is_era),
+            isEra: Boolean(page.is_era || page.is_state), // both: only the text is editable here
+            state: page.state || null,
             hidden: Boolean(page.hidden),
             era: page.era || null,
             book: page.book || null
@@ -941,7 +942,7 @@
 
             h("div", { class: "field-grid" },
                 h("div", { class: "field" },
-                    h("label", {}, "Title", draft.isEra ? h("span", { class: "hint" }, " — comes from the calendar's eras.json") : null),
+                    h("label", {}, "Title", draft.state ? h("span", { class: "hint" }, " — named after its state on the map") : draft.isEra ? h("span", { class: "hint" }, " — comes from the calendar's eras.json") : null),
                     titleInput),
                 h("div", { class: "field" }, h("label", {}, "Category"), moveSelect)
             ),
@@ -956,6 +957,16 @@
             ),
 
             hiddenField(draft.hidden, (value) => { draft.hidden = value; markDirty(); }).element,
+
+            draft.state
+                ? h("p", { class: "hint-block" }, draft.state.is_group ? "A superstate on the map " : "A state on the map ",
+                    h("a", { href: `/maps/${encodeURIComponent(draft.state.map_slug)}?state=${draft.state.id}`, target: "_blank" }, draft.state.map_name),
+                    draft.state.parent ? `, part of ${draft.state.parent.name}` : "",
+                    ". Its name is changed, and the state deleted, on the map.",
+                    draft.state.is_group && draft.state.clients.length
+                        ? ` Its page lists its clients automatically: ${draft.state.clients.map((c) => c.name).join(", ")}.`
+                        : "")
+                : null,
 
             ...(draft.era ? [eraNotesPanel(draft.era)] : []),
             ...(draft.book ? [bookNotesPanel(draft.book)] : []),

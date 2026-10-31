@@ -259,3 +259,21 @@
     font-size: 0.85em;
     color: var(--muted);
 }
+
+/* The clients of a superstate and a state's statistics (generated from the map). */
+.state-stats {
+    margin-top: 28px;
+}
+
+.state-stats h2 {
+    font-size: 1.2em;
+}
+
+.state-clients-list {
+    margin: 6px 0 0;
+    padding-left: 1.4em;
+}
+
+.state-clients-list .state-clients-list {
+    margin-top: 2px;
+}

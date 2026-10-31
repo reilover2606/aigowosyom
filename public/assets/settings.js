@@ -39,7 +39,9 @@
             [counts.words, "dictionary entry", "dictionary entries"],
             [counts.loreCategories, "lore category", "lore categories"],
             [counts.lorePages, "lore page", "lore pages"],
-            [counts.notes, "calendar note", "calendar notes"]
+            [counts.notes, "calendar note", "calendar notes"],
+            [counts.maps, "map", "maps"],
+            [counts.mapItems, "map state, place or shape", "map states, places and shapes"]
         ].filter(([n]) => n > 0).map(([n, one, many]) => plural(n, one, many));
 
         return parts.length

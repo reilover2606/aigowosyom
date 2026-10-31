@@ -51,6 +51,8 @@ const { PORT, HOST } = config;
 const handlers = [
     require("./routes/settings"),
     require("./routes/calendar"),
+    require("./routes/maps-api"),
+    require("./routes/maps-pages"),
     require("./routes/dictionary-api"),
     require("./routes/dictionary-pages"),
     require("./routes/lore-api"),
@@ -63,8 +65,9 @@ const handlers = [
 // (uploads of published databases are handled by routes/settings.js first),
 // and the editor pages and scripts.
 const EDITOR_PATHS = [
-    /^\/(dictionary|lore)\/editor(\/|$)/,
-    /^\/assets\/(dictionary|lore)\/editor\.(js|css)$/
+    /^\/(dictionary|lore|maps)\/editor(\/|$)/,
+    /^\/assets\/(dictionary|lore)\/editor\.(js|css)$/,
+    /^\/assets\/maps\/map-editor\.js$/
 ];
 
 function refusedWhenPublic(req, url) {
@@ -83,8 +86,8 @@ function refusedWhenPublic(req, url) {
 function sendError(req, res, url, status, message) {
     if (url && url.pathname.startsWith("/api/")) {
         sendJson(res, status, { error: message });
-    } else if (url && (url.pathname.startsWith("/dictionary") || url.pathname.startsWith("/lore"))) {
-        const section = url.pathname.startsWith("/lore") ? "lore" : "dictionary";
+    } else if (url && (url.pathname.startsWith("/dictionary") || url.pathname.startsWith("/lore") || url.pathname.startsWith("/maps"))) {
+        const section = url.pathname.startsWith("/lore") ? "lore" : url.pathname.startsWith("/maps") ? "maps" : "dictionary";
         sendHtml(
             res,
             status,
@@ -92,7 +95,7 @@ function sendError(req, res, url, status, message) {
                 section,
                 title: message,
                 search: { q: "" },
-                body: `<main class="content"><h1>${esc(message)}</h1><p><a href="/${section}">Back to ${section === "lore" ? "the lore" : "the dictionary"}</a></p></main>`
+                body: `<main class="content"><h1>${esc(message)}</h1><p><a href="/${section}">Back to ${section === "lore" ? "the lore" : section === "maps" ? "the maps" : "the dictionary"}</a></p></main>`
             })
         );
     } else {

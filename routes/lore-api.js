@@ -4,6 +4,7 @@
 
 const lore = require("../lib/lore");
 const eras = require("../lib/eras");
+const maps = require("../lib/maps");
 const books = require("../lib/books");
 const { HttpError, sendJson, readJson, parseInteger } = require("../lib/http");
 const { stripLinkSyntax } = require("../lib/html");
@@ -28,6 +29,8 @@ function pageJson(id) {
     const page = lore.getPage(id);
 
     if (page) {
+        page.is_state = page.map_state_id !== null;
+        page.state = page.is_state ? maps.stateInfo(page.map_state_id) : null;
         page.is_era = page.era_start_year !== null;
         page.era = page.is_era ? eras.eraNotes(page.era_start_year) : null;
         // Pages in the Books category are books: they carry their assigned notes.
