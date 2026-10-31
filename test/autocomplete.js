@@ -132,4 +132,24 @@ check("a line that follows a border in the middle still completes", () => {
     assert.ok(c.ring.some((item) => item.id === 5) && c.ring.some((item) => item.id === 8), "also follows B");
 });
 
+check("a gap closed off by two states and the coast is found from a point in it", () => {
+    const r = complete({ ...two, at: [50, 50] });
+    assert.strictEqual(r.candidates.length, 1, r.message);
+    assert.strictEqual(Math.round(area(r.candidates[0].outline)), 4000);
+    const ids = r.candidates[0].ring.filter((item) => item.id).map((item) => item.id).sort();
+    assert.deepStrictEqual(ids, [2, 3, 5, 8]);
+    assert.ok(r.candidates[0].ring.every((item) => item.id), "no new corners are needed");
+});
+
+check("a hole inside a state is a gap too, and a point inside a state or in the sea is not", () => {
+    const v = new Map([...twoVertices, [11, [10, 10]], [12, [20, 10]], [13, [20, 20]], [14, [10, 20]]]);
+    const holed = [{ id: 1, polygons: [[[1, 2, 3, 4], [11, 12, 13, 14]]] }, twoStates[1]];
+    const input = { vertices: v, states: holed, land, eps };
+    const hole = complete({ ...input, at: [15, 15] });
+    assert.strictEqual(hole.candidates.length, 1, hole.message);
+    assert.strictEqual(Math.round(area(hole.candidates[0].outline)), 100);
+    assert.strictEqual(complete({ ...input, at: [5, 50] }).candidates.length, 0);
+    assert.strictEqual(complete({ ...input, at: [500, 500] }).candidates.length, 0);
+});
+
 console.log(`\n${passed} checks passed`);
