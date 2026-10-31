@@ -24,6 +24,7 @@
         draw: null, // a state being drawn: { points, target }
         followBorders: true,
         coastSnap: true,
+        landJoin: true, // new or reshaped land joins the land it touches
         elevationStyle: MapCore.savedElevationStyle(), // how elevation is drawn: { tint, relief }
         undo: [], // steps that can be undone, oldest first
         redo: [],
@@ -493,7 +494,7 @@
 
     const HINTS = {
         select: "Click a state, shape or place to select it. Shift-click several states to combine them into a superstate. Drag to pan; scroll to zoom.",
-        land: "Click to add corners; double-click to finish. Hold Shift and drag to draw freehand.",
+        land: "Click to add corners; double-click to finish. Hold Shift and drag to draw freehand. Corners snap to existing land; land you draw over or against existing land joins it into one piece, and clicking two points on that land's coast follows the coast between them.",
         lake: "Click to add corners; double-click to finish. Hold Shift and drag to draw freehand.",
         river: "Click to add points along the river; double-click to finish. Hold Shift and drag for freehand.",
         ocean: "Draw a loose outline around the sea or ocean, then give it a name: the name is placed in the middle of the outline and sized to it. The outline is only shown here in the editor.",
@@ -585,16 +586,41 @@
             : { type: "Polygon", coordinates: geometry.getCoordinates() };
 
         await guarded(async () => {
-            await api("PUT", `/api/map-features/${feature.get("id")}`, { geometry: json });
+            await api("PUT", `/api/map-features/${feature.get("id")}`, { geometry: json, merge: state.landJoin });
             await load(); // so that it is a step that can be undone
         });
     }
 
+    // Land drawn against land: where two neighbouring corners both lie on the coast of the same
+    // piece of land, the new shape follows that coast between them (the shorter way round), so
+    // that it fits against it instead of cutting across.
+    function followLandCoasts(ring) {
+        const corners = ring.slice(0, -1);
+        const placed = corners.map((p) => coastLocation(p[0], p[1]));
+        const out = [];
+        corners.forEach((corner, i) => {
+            out.push(corner);
+            const from = placed[i];
+            const to = placed[(i + 1) % corners.length];
+            if (from && to && from.ring === to.ring) {
+                for (const [x, y] of pathAlongCoast(from, to)) {
+                    out.push([x, y]);
+                }
+            }
+        });
+        out.push([out[0][0], out[0][1]]);
+        return out;
+    }
+
     async function finishShape(kind, feature) {
         const geometry = feature.getGeometry();
+        let coordinates = geometry.getCoordinates();
+        if (kind === "land" && state.landJoin) {
+            coordinates = coordinates.map((ring, index) => (index === 0 ? followLandCoasts(ring) : ring));
+        }
         const json = kind === "river"
-            ? { type: "LineString", coordinates: geometry.getCoordinates() }
-            : { type: "Polygon", coordinates: geometry.getCoordinates() };
+            ? { type: "LineString", coordinates }
+            : { type: "Polygon", coordinates };
 
         let name;
         if (kind === "ocean") {
@@ -606,10 +632,11 @@
         }
 
         await guarded(async () => {
-            const created = await api("POST", `/api/maps/${state.mapId}/features`, { kind, geometry: json, name });
+            const created = await api("POST", `/api/maps/${state.mapId}/features`, { kind, geometry: json, name, merge: kind === "land" ? state.landJoin : undefined });
+            state.nextLabel = created.joined ? "Add land onto land" : null; // a step that changes an existing shape
             await load();
             selectObject({ type: "feature", id: created.id });
-            say(kind === "ocean" ? "Named." : "Saved. Name it in the panel (optional), or keep drawing.");
+            say(kind === "ocean" ? "Named." : created.joined ? `Joined the land it touches (${created.joined} piece${created.joined === 1 ? "" : "s"}) into one.` : "Saved. Name it in the panel (optional), or keep drawing.");
         });
     }
 
@@ -1806,10 +1833,19 @@
             return `Draw ${addedFeature.kind === "ocean" ? "sea name" : addedFeature.kind}`;
         }
         const removedFeature = before.features.find((f) => !featuresB.has(f.id));
+        // Land that has swallowed other land: the shapes are fewer and one of them has changed.
+        if (removedFeature && removedFeature.kind === "land" && after.features.some((f) => f.kind === "land" && !same(f.geometry, (featuresA.get(f.id) || {}).geometry))) {
+            return "Join land";
+        }
         if (removedFeature) {
             return `Delete ${removedFeature.kind === "ocean" ? "sea name" : removedFeature.kind}`;
         }
         const changedFeature = after.features.find((f) => !same(f, featuresA.get(f.id)));
+        if (changedFeature && state.nextLabel) {
+            const label = state.nextLabel;
+            state.nextLabel = null;
+            return label;
+        }
         if (changedFeature) {
             return same(changedFeature.geometry, featuresA.get(changedFeature.id).geometry)
                 ? `Edit ${changedFeature.kind === "ocean" ? "sea name" : changedFeature.kind}`
@@ -2289,6 +2325,11 @@
                 ? h("div", { class: "field check" },
                     h("input", { type: "checkbox", id: "coast", checked: state.coastSnap, onchange: (event) => { state.coastSnap = event.target.checked; } }),
                     h("label", { for: "coast" }, "Snap to the coastline (and follow it between two points)"))
+                : null,
+            state.mode === "land" || state.mode === "reshape"
+                ? h("div", { class: "field check" },
+                    h("input", { type: "checkbox", id: "landjoin", checked: state.landJoin, onchange: (event) => { state.landJoin = event.target.checked; } }),
+                    h("label", { for: "landjoin" }, "Join land that overlaps or touches other land into one piece"))
                 : null,
             h("p", { class: "hint" }, HINTS[state.mode] || ""));
     }
