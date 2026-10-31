@@ -36,6 +36,7 @@
         // how many feet a pixel of dragging is worth; how hard smoothing works.
         brush: { radius: 40, sharpness: 0.35, feetPerPixel: 12, smoothing: 0.5 },
         multi: [], // states marked together (shift-click), for combining
+        collapsed: new Set(), // superstates whose clients are folded away in the list
         layers: { tracers: true, land: true, lakes: true, rivers: true, waterNames: true, states: true, labels: true, points: true },
         interactions: []
     };
@@ -220,7 +221,7 @@
             return;
         }
 
-        const view = MapCore.create({ target: viewEl, bundle: state.bundle, editable: true });
+        const view = MapCore.create({ target: viewEl, bundle: state.bundle, editable: true, fullscreen: root });
         state.view = view;
         view.setImages(state.bundle.images);
         view.setElevation(state.elevation);
@@ -1091,7 +1092,7 @@
             h("p", {}, "That line could close either of the outlined areas. Click the one you want."),
             h("div", { class: "actions" },
                 h("button", { type: "button", onclick: () => { closeChoosing(); renderSketch(null); } }, "Keep drawing")));
-        document.body.append(dialog);
+        root.append(dialog); // inside the editor, so it also shows in full screen
         dialog.show();
         state.choosing = { candidates, dialog, hot: null };
         renderChoosing(null);
@@ -1380,6 +1381,19 @@
 
         const list = (nodes) => h("ul", { class: "states-tree" }, ...nodes.map((s) =>
             h("li", {},
+              h("div", { class: "tree-row" },
+                s.kids.length
+                    ? h("button", {
+                        type: "button",
+                        class: "fold",
+                        title: state.collapsed.has(s.id) ? `Show its ${s.kids.length} states` : "Fold its states away",
+                        "aria-expanded": state.collapsed.has(s.id) ? "false" : "true",
+                        onclick: () => {
+                            state.collapsed.has(s.id) ? state.collapsed.delete(s.id) : state.collapsed.add(s.id);
+                            renderStatesTree();
+                        }
+                    }, state.collapsed.has(s.id) ? "▸" : "▾")
+                    : h("span", { class: "fold-spacer" }),
                 h("button", {
                     type: "button",
                     class: `${marked.has(s.id) ? "active" : ""} ${s.polygons.length === 0 ? "group" : ""}`.trim(),
@@ -1391,8 +1405,8 @@
                             selectObject({ type: "state", id: s.id });
                         }
                     }
-                }, h("span", { class: "swatch", style: `background:${s.color}` }), s.name, s.status === "capital" ? " (capital)" : "", s.hidden ? " ·" : ""),
-                s.kids.length ? list(s.kids) : null)));
+                }, h("span", { class: "swatch", style: `background:${s.color}` }), s.name, s.status === "capital" ? " (capital)" : "", s.hidden ? " ·" : "", s.kids.length && state.collapsed.has(s.id) ? ` (${s.kids.length})` : "")),
+                s.kids.length && !state.collapsed.has(s.id) ? list(s.kids) : null)));
 
         const tree = bundle ? MapCore.stateTree(bundle.states) : [];
         put(statesEl,
@@ -1512,8 +1526,8 @@
                     : null,
                 statsBlock(s),
                 isGroup
-                    ? h("div", {},
-                        h("p", { class: "hint" }, "Made of these states (shown on its lore page automatically):"),
+                    ? h("details", { class: "clients", open: "" },
+                        h("summary", {}, `Made of ${clients.length} state${clients.length === 1 ? "" : "s"} (shown on its lore page automatically)`),
                         h("ul", { class: "states-tree" }, ...clients.map((c) =>
                             h("li", {}, h("button", { type: "button", onclick: () => selectObject({ type: "state", id: c.id }) },
                                 h("span", { class: "swatch", style: `background:${c.color}` }), c.name)))))
