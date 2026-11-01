@@ -1124,6 +1124,7 @@
 
     // Splits IPA into inventory symbols, longest first; null if some part isn't one.
     function segmentIpa(text, symbols) {
+        text = text.replace(/g/g, "ɡ"); // the IPA symbol is ɡ; the keyboard's g is taken for it
         const longest = [...symbols].sort((a, b) => b.length - a.length);
         const memo = new Map();
         const from = (at) => {
