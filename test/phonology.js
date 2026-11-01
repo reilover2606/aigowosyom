@@ -154,6 +154,26 @@ check("stress: a rule places it where the spelling doesn't, and marks in the spe
     assert.strictEqual(phon.transcribe(lang.id, "katana").surface, "/ˈka.ta.na/", "otherwise the third from the end");
 });
 
+check("syllabic consonants carry a syllable when no vowel is next to them", () => {
+    const lang = dict.createLanguage({ slug: "syc", name: "Syc" });
+    const symbols = ["v", "l", "r", "k", "p", "s", "t", "a"];
+    const set = (prosody) => phon.savePhonology(lang.id, {
+        phonemes: symbols.map((ipa) => ({ ipa })),
+        graphemes: symbols.map((x) => ({ grapheme: x, ipa: x })),
+        prosody: { show_syllables: true, ...prosody }
+    });
+    set({ syllabic: "l r" });
+    assert.strictEqual(phon.transcribe(lang.id, "vlk").surface, "/vl\u0329k/");
+    assert.strictEqual(phon.transcribe(lang.id, "prst").surface, "/pr\u0329st/");
+    assert.strictEqual(phon.transcribe(lang.id, "trla").surface, "/tr\u0329.la/");
+    assert.strictEqual(phon.transcribe(lang.id, "kalk").surface, "/kalk/", "after a vowel it is a coda, not a syllable");
+    assert.strictEqual(phon.transcribe(lang.id, "plat").surface, "/plat/", "before a vowel it is an onset");
+    assert.strictEqual(phon.transcribe(lang.id, "vlkra").surface, "/vl\u0329k.ra/");
+    set({});
+    assert.strictEqual(phon.transcribe(lang.id, "vlk").surface, "/vlk/", "without the setting a word with no vowel is one syllable anyway");
+    assert.deepStrictEqual(phon.transcribe(lang.id, "vlk").syllables.length, 1);
+});
+
 check("alignment lines up like sounds and marks losses and gains", () => {
     assert.deepStrictEqual(align(["k", "a", "t"], ["k", "a", "t"]), [["k", "k"], ["a", "a"], ["t", "t"]]);
     assert.deepStrictEqual(align(["k", "a", "t", "a"], ["g", "a", "t"]), [["k", "g"], ["a", "a"], ["t", "t"], ["a", GAP]]);
