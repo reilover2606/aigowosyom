@@ -16,6 +16,23 @@
 
     const colors = {};
 
+    // A CSS color mixed part of the way toward white (any CSS color syntax).
+    let mixProbe = null;
+    function lighten(css, amount) {
+        if (!mixProbe) {
+            const canvas = document.createElement("canvas");
+            canvas.width = canvas.height = 1;
+            mixProbe = canvas.getContext("2d", { willReadFrequently: true });
+        }
+        mixProbe.clearRect(0, 0, 1, 1);
+        mixProbe.fillStyle = "#cfe3ee";
+        mixProbe.fillStyle = css;
+        mixProbe.fillRect(0, 0, 1, 1);
+        const [r, g, b] = mixProbe.getImageData(0, 0, 1, 1).data;
+        const mix = (v) => Math.round(v + (255 - v) * amount);
+        return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+    }
+
     function readColors() {
         const style = getComputedStyle(document.documentElement);
         const get = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
@@ -24,6 +41,7 @@
         colors.land = get("--map-land", "#efe6cf");
         colors.coast = get("--map-coast", "#8a7a55");
         colors.lake = get("--map-lake", "#cfe3ee");
+        colors.shallow = get("--map-shallow", "") || lighten(colors.sea, 0.55); // the sea near the coast
         colors.river = get("--map-river", "#6d9bc3");
         colors.border = get("--map-border", "#4a3f2a");
         colors.label = get("--map-label", "#2b2b2b");
@@ -413,6 +431,19 @@
             return style;
         };
 
+        // The sea gets shallower toward the coast: a few wide, faint strokes of a lighter water colour
+        // along the land's outline, stacked from wide to narrow (the land is drawn over their inner half).
+        // Only for looks: the band is a share of the map's size, so it grows and shrinks with the zoom.
+        const SHALLOWS = [[1, 0.26], [0.7, 0.26], [0.45, 0.26], [0.22, 0.26]]; // [width relative to the band, opacity]
+        const shallowStyle = (feature, resolution) => {
+            const band = (Math.max(map.width, map.height) * 0.018) / resolution; // px
+            if (band < 3) {
+                return null;
+            }
+            return cached(`shallows|${colors.shallow}|${Math.round(band)}`, () => SHALLOWS.map(([share, alpha]) => new ol.style.Style({
+                stroke: new ol.style.Stroke({ color: withOpacity(colors.shallow, alpha), width: band * share * 2, lineJoin: "round" })
+            })));
+        };
         const seaStyle = () => cached(`sea|${colors.sea}`, () => new ol.style.Style({ fill: new ol.style.Fill({ color: colors.sea }) }));
         // While a tracer image is showing (editor), land and lakes let it show through.
         const fillOf = (color) => (view.tracing ? hexAlpha(color, 0.4) : color);
@@ -622,7 +653,10 @@
             lakes: layer(sources.lakes, lakeStyle, 3),
             rivers: layer(sources.rivers, riverStyle, 4),
             oceans: layer(sources.oceans, oceanStyle, 1.5),
-            elevation: new ol.layer.Image({ zIndex: 2.5, visible: false, opacity: 0.7 }),
+            shallows: layer(sources.land, shallowStyle, 1.8),
+            // Drawn afresh on every frame from the shading picture (rather than as an image made when the
+            // map stops moving, which left blank edges while it was being dragged).
+            elevation: new ol.layer.Layer({ zIndex: 2.5, visible: false, opacity: 0.7, render: (frameState) => renderElevation(frameState) }),
             states: layer(sources.states, stateStyle, 5),
             borders: layer(sources.borders, borderStyle, 6),
             outlines: layer(sources.outlines, outlineStyle, 6.5),
@@ -889,10 +923,11 @@
                 if (name === "elevation") {
                     continue;
                 }
-                const wanted = view.shown[name] !== false;
+                const key = name === "shallows" ? "land" : name; // the shallows go with the land
+                const wanted = view.shown[key] !== false;
                 if (webgl && GL_DRAWS.includes(name)) {
                     view.layers[name].setVisible(false);
-                } else if (view.shown[name] !== undefined || GL_DRAWS.includes(name)) {
+                } else if (view.shown[key] !== undefined || GL_DRAWS.includes(key)) {
                     view.layers[name].setVisible(wanted);
                 }
             }
@@ -955,30 +990,39 @@
         let shade = null; // an offscreen canvas, one pixel per cell
         let shadeContext = null;
 
-        const elevationSource = new ol.source.ImageCanvas({
-            projection,
-            ratio: 1,
-            canvasFunction(extentWanted, resolution, pixelRatio, size) {
-                const canvas = document.createElement("canvas");
-                canvas.width = size[0];
-                canvas.height = size[1];
-                if (shade && view.elevation) {
-                    const context = canvas.getContext("2d");
-                    const { cols, rows, cell } = view.elevation;
-                    context.imageSmoothingEnabled = false;
-                    // The grid covers [0, cols*cell] x [0, rows*cell]; canvas y runs down.
-                    context.drawImage(
-                        shade, 0, 0, cols, rows,
-                        (0 - extentWanted[0]) / resolution * pixelRatio,
-                        (extentWanted[3] - rows * cell) / resolution * pixelRatio,
-                        (cols * cell) / resolution * pixelRatio,
-                        (rows * cell) / resolution * pixelRatio
-                    );
-                }
-                return canvas;
+        const elevationElement = document.createElement("canvas");
+        elevationElement.style.position = "absolute";
+        elevationElement.style.left = "0";
+        elevationElement.style.top = "0";
+        elevationElement.style.pointerEvents = "none";
+        const elevationSource = { changed: () => view.layers.elevation.changed() };
+
+        function renderElevation(frameState) {
+            const [width, height] = frameState.size;
+            const ratio = frameState.pixelRatio || 1;
+            if (elevationElement.width !== Math.round(width * ratio) || elevationElement.height !== Math.round(height * ratio)) {
+                elevationElement.width = Math.round(width * ratio);
+                elevationElement.height = Math.round(height * ratio);
+                elevationElement.style.width = `${width}px`;
+                elevationElement.style.height = `${height}px`;
             }
-        });
-        view.layers.elevation.setSource(elevationSource);
+            const context = elevationElement.getContext("2d");
+            context.clearRect(0, 0, elevationElement.width, elevationElement.height);
+            if (shade && view.elevation) {
+                const { cols, rows, cell } = view.elevation;
+                const { center, resolution } = frameState.viewState;
+                context.imageSmoothingEnabled = false;
+                // The grid covers [0, cols*cell] x [0, rows*cell]; the screen's y runs down.
+                context.drawImage(
+                    shade, 0, 0, cols, rows,
+                    (width / 2 - center[0] / resolution) * ratio,
+                    (height / 2 - (rows * cell - center[1]) / resolution) * ratio,
+                    ((cols * cell) / resolution) * ratio,
+                    ((rows * cell) / resolution) * ratio
+                );
+            }
+            return elevationElement;
+        }
 
         // How the elevation is drawn: a tint ("none", "gray" or "colors") and/or
         // relief shading (light falling from the north-west on the slopes).

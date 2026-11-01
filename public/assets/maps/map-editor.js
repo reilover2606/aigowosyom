@@ -1516,8 +1516,10 @@
                         "Part of ",
                         h("a", { href: "#", onclick: (event) => { event.preventDefault(); selectObject({ type: "state", id: parent.id }); } }, parent.name),
                         " ",
-                        h("button", { type: "button", onclick: () => takeOut([s]) }, "Take out"))
-                    : null,
+                        h("button", { type: "button", onclick: () => takeOut([s]) }, "Take out"),
+                        " ",
+                        h("button", { type: "button", onclick: () => addMarkedToGroup([s]) }, "Move to another superstate…"))
+                    : h("p", {}, h("button", { type: "button", onclick: () => addMarkedToGroup([s]) }, "Add to a superstate…")),
                 parent
                     ? field(`Status in ${parent.name}`, bindSave(
                         h("select", {}, ...Object.entries(MapCore.STATUS_NAMES).map(([key, label]) =>
@@ -1676,7 +1678,17 @@
 
     async function addMarkedToGroup(chosen) {
         const ids = new Set(chosen.map((c) => c.id));
-        const groups = state.bundle.states.filter((s) => s.polygons.length === 0 && !ids.has(s.id));
+        const byId = new Map(state.bundle.states.map((s) => [s.id, s]));
+        // Not the states themselves, nor a superstate inside one of them (that would make a loop).
+        const inside = (g) => {
+            for (let at = g, steps = 0; at && steps < 30; at = byId.get(at.parent_id), steps++) {
+                if (ids.has(at.id)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        const groups = state.bundle.states.filter((s) => s.polygons.length === 0 && !inside(s));
         if (groups.length === 0) {
             say("There is no superstate to add them to yet. Combine some states first.", "error");
             return;
