@@ -539,7 +539,7 @@ function renderEntry(word, language, index, multiple) {
         const spoken = phonology.transcribe(language.id, word.headword);
         if (spoken.complete) {
             sections.push(
-                `<${innerTag}>Pronunciation</${innerTag}><ul><li class="pronunciation"><span class="ipa">${esc(phonology.slashed(spoken.phonemes))}</span> <span class="muted">(from the spelling)</span></li></ul>`
+                `<${innerTag}>Pronunciation</${innerTag}><ul><li class="pronunciation"><span class="ipa">${esc(spoken.surface)}</span> <span class="muted">(from the spelling)</span></li></ul>`
             );
         }
     }
@@ -855,8 +855,34 @@ function vowelChart(vowels) {
     <p class="chart-note">Where a cell has two vowels, the unrounded one is on the left.</p>`;
 }
 
+// "at the start of a word, after n, m" for a spelling rule.
+function whenText(rule) {
+    const parts = [];
+    if (rule.where === "start") {
+        parts.push("at the start of a word");
+    } else if (rule.where === "end") {
+        parts.push("at the end of a word");
+    }
+    for (const [word, text] of [["after", rule.after], ["before", rule.before]]) {
+        if (text) {
+            parts.push(`${word} ${text.startsWith("not ") ? `not ${esc(text.slice(4))}` : esc(text)}`);
+        }
+    }
+    return parts.length ? parts.join(", ") : '<span class="muted">otherwise</span>';
+}
+
+const STRESS_RULE_TEXT = {
+    none: "no rule (stress is written in the spelling, or not marked)",
+    initial: "the first syllable",
+    second: "the second syllable",
+    penultimate: "the second to last syllable",
+    antepenultimate: "the third to last syllable",
+    final: "the last syllable",
+    weight: "the second to last syllable if it is heavy, otherwise the third to last"
+};
+
 function phonologyPage(res, language) {
-    const { phonemes, graphemes } = phonology.getPhonology(language.id);
+    const { phonemes, graphemes, prosody } = phonology.getPhonology(language.id);
 
     if (phonemes.length === 0 && graphemes.length === 0) {
         sendHtml(res, 200, languageShell(language, "phonology", `<p class="muted">No sounds or spelling have been set for this language yet.${
@@ -882,13 +908,14 @@ function phonologyPage(res, language) {
         <h2>Spelling</h2>
         <p class="chart-note">Each letter (or group of letters) and the sound it stands for. Longer groups win: “kh” is read before “k”.</p>
         <table class="relations spelling-table">
-            <thead><tr><th>Letters</th><th>Sound</th><th>Uses</th><th>Example</th><th></th></tr></thead>
-            <tbody>${report.letterStats.map((l, i) => `<tr>
+            <thead><tr><th>Letters</th><th>Sound</th><th>When</th><th>Uses</th><th>Example</th><th></th></tr></thead>
+            <tbody>${report.letterStats.map((l) => `<tr>
                 <td><strong class="conlang">${esc(l.grapheme)}</strong></td>
-                <td>${ipa(phonology.slashed([l.ipa]))}</td>
+                <td>${l.ipa === "∅" ? '<span class="muted">silent</span>' : ipa(l.ipa.match(/^[ːˑʰʷʲˠˤʼ\p{M}]/u) ? `+${l.ipa}` : phonology.slashed([l.ipa]))}</td>
+                <td class="when">${whenText(l)}</td>
                 <td class="num">${l.count}</td>
                 <td>${l.example ? `<a class="conlang" href="${entryUrl(language.slug, l.example)}">${esc(l.example)}</a>` : '<span class="muted">—</span>'}</td>
-                <td class="muted">${esc(graphemes[i] && graphemes[i].note ? graphemes[i].note : "")}</td>
+                <td class="muted">${esc(l.note || "")}</td>
             </tr>`).join("")}</tbody>
         </table>
     </section>`
@@ -905,6 +932,24 @@ function phonologyPage(res, language) {
         ${report.unspelled.length
             ? `<p class="chart-note">Sounds in the inventory with no letter: ${report.unspelled.map(ipa).join(" ")}</p>`
             : ""}
+    </section>`
+        : "";
+
+    const hasProsody = graphemes.length > 0 && (prosody.stress_rule !== "none" || prosody.diphthongs || prosody.onsets || prosody.show_syllables || report.stressPositions.length);
+    const syllables = hasProsody && report.transcribed
+        ? `<section class="chart-card">
+        <h2>Syllables and stress</h2>
+        <ul class="plain-list">
+            <li>Stress falls on ${esc(STRESS_RULE_TEXT[prosody.stress_rule] || "")}${prosody.stress_rule !== "none" ? ", unless the spelling marks it" : ""}.</li>
+            ${prosody.diphthongs ? `<li>Diphthongs: ${prosody.diphthongs.split(" ").map((d) => `<span class="ipa">${esc(d)}</span>`).join(" ")}</li>` : ""}
+            ${prosody.onsets ? `<li>Consonant clusters that can begin a syllable: ${prosody.onsets.split(" ").map((d) => `<span class="ipa">${esc(d)}</span>`).join(" ")}</li>` : ""}
+            ${prosody.max_coda !== null ? `<li>A syllable can end in at most ${prosody.max_coda === 0 ? "no consonants (open syllables)" : `${prosody.max_coda} consonant${prosody.max_coda === 1 ? "" : "s"}`}.</li>` : ""}
+        </ul>
+        <div class="two-up">
+            <div><h3>Syllable shapes</h3>${charts.barList(report.syllableShapes.map((s) => ({ label: s.shape, count: s.count })))}</div>
+            <div><h3>Syllables per word</h3>${charts.barList(report.syllableCounts.map((s) => ({ label: `${s.syllables} syllable${s.syllables === 1 ? "" : "s"}`, count: s.count })))}</div>
+            ${report.stressPositions.length ? `<div><h3>Where stress falls</h3>${charts.barList(report.stressPositions.map((s) => ({ label: s.label, count: s.count })))}</div>` : ""}
+        </div>
     </section>`
         : "";
 
@@ -934,6 +979,7 @@ function phonologyPage(res, language) {
         <ul class="prosody-list">${[...tones, ...stresses].map((p) => `<li>${ipa(p.ipa)} <span class="muted">${esc(p.label || p.kind)}</span></li>`).join("")}</ul></section>`
         : ""}
     ${spelling}
+    ${syllables}
     ${coverage}
     ${frequency}
     <p class="muted"><a href="/dictionary/correspondences">Sound correspondences between related languages →</a></p>
