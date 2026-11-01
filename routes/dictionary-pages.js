@@ -28,6 +28,9 @@ const { resolveColor } = require("../lib/color");
 const charts = require("../lib/charts");
 const { familyView, KIND_STYLE } = require("../lib/family");
 const { soundPatterns, EDGE } = require("../lib/sounds");
+const phonology = require("../lib/phonology");
+const { CHART } = require("../lib/ipa");
+const correspondences = require("../lib/correspondences");
 
 const PAGE_SIZE = 200;
 const SEARCH_LIMIT = 100;
@@ -239,7 +242,7 @@ function languageShell(language, activeTab, content) {
 
     return layout({
         title: `${language.name}${
-            { stats: " statistics", sounds: " sound patterns" }[activeTab] || ""
+            { stats: " statistics", sounds: " sound patterns", phonology: " phonology" }[activeTab] || ""
         } – Dictionary`,
         search: { q: "" },
         body: `<main class="content language-page" style="${langVars(language.display_color, language.ink)}">
@@ -252,6 +255,7 @@ function languageShell(language, activeTab, content) {
         <a href="${base}"${activeTab === "words" ? ' class="active" aria-current="page"' : ""}>Words</a>
         <a href="${base}?view=stats"${activeTab === "stats" ? ' class="active" aria-current="page"' : ""}>Statistics</a>
         <a href="${base}?view=sounds"${activeTab === "sounds" ? ' class="active" aria-current="page"' : ""}>Sound patterns</a>
+        <a href="${base}?view=phonology"${activeTab === "phonology" ? ' class="active" aria-current="page"' : ""}>Phonology</a>
         <a class="tab-aside" href="/dictionary/family">Family tree</a>
     </nav>
     ${content}
@@ -515,6 +519,14 @@ function renderEntry(word, language, index, multiple) {
         sections.push(
             `<${innerTag}>Pronunciation</${innerTag}><ul><li class="pronunciation conlang">${esc(word.pronunciation)}</li></ul>`
         );
+    } else {
+        // No pronunciation written down: the spelling gives it, if the language has an orthography.
+        const spoken = phonology.transcribe(language.id, word.headword);
+        if (spoken.complete) {
+            sections.push(
+                `<${innerTag}>Pronunciation</${innerTag}><ul><li class="pronunciation"><span class="ipa">${esc(phonology.slashed(spoken.phonemes))}</span> <span class="muted">(from the spelling)</span></li></ul>`
+            );
+        }
     }
 
     // Part of speech heading, headword line, and senses.
@@ -743,7 +755,7 @@ function familyPage(res) {
             (r) => `<tr>
             <td>${langBadge(r.from.name, resolveColor(r.from.color).color, resolveColor(r.from.color).ink, languageUrl(r.from.slug))}</td>
             <td>${langBadge(r.to.name, resolveColor(r.to.color).color, resolveColor(r.to.color).ink, languageUrl(r.to.slug))}</td>
-            <td>${esc(r.kind)}</td>
+            <td>${esc(r.kind)}${r.kind === "inherited" ? ` · <a href="/dictionary/correspondences?from=${encodeURIComponent(r.from.slug)}&amp;to=${encodeURIComponent(r.to.slug)}">sound changes</a>` : ""}</td>
             <td class="num">${r.n}</td>
         </tr>`
         )
@@ -781,6 +793,213 @@ function familyPage(res) {
     <p class="crumbs"><a href="/dictionary">Dictionary</a> › Language family</p>
     <h1>Language family</h1>
     ${body}
+</main>`
+        })
+    );
+}
+
+
+// ---- Phonology: a language's sounds and spelling ----
+
+const ipa = (symbol) => `<span class="ipa">${esc(symbol)}</span>`;
+
+function consonantChart(consonants) {
+    const placed = consonants.filter((p) => p.place && p.manner);
+    const places = CHART.places.filter(([key]) => placed.some((p) => p.place === key));
+    const manners = CHART.manners.filter(([key]) => placed.some((p) => p.manner === key));
+    if (!placed.length) {
+        return "";
+    }
+    const cell = (place, manner) => {
+        const here = placed.filter((p) => p.place === place && p.manner === manner)
+            .sort((a, b) => (a.voiced || 0) - (b.voiced || 0));
+        return `<td>${here.map((p) => ipa(p.ipa)).join(" ")}</td>`;
+    };
+    return `<div class="chart-scroll"><table class="ipa-chart">
+        <thead><tr><th></th>${places.map(([, label]) => `<th scope="col">${esc(label)}</th>`).join("")}</tr></thead>
+        <tbody>${manners.map(([key, label]) => `<tr><th scope="row">${esc(label)}</th>${places.map(([place]) => cell(place, key)).join("")}</tr>`).join("")}</tbody>
+    </table></div>
+    <p class="chart-note">Where a cell has two sounds, the voiceless one is on the left.</p>`;
+}
+
+function vowelChart(vowels) {
+    const placed = vowels.filter((p) => p.height && p.backness);
+    if (!placed.length) {
+        return "";
+    }
+    const heights = CHART.heights.filter(([key]) => placed.some((p) => p.height === key));
+    const cell = (height, backness) => {
+        const here = placed.filter((p) => p.height === height && p.backness === backness)
+            .sort((a, b) => (a.rounded || 0) - (b.rounded || 0));
+        return `<td>${here.map((p) => ipa(p.ipa)).join(" ")}</td>`;
+    };
+    return `<div class="chart-scroll"><table class="ipa-chart">
+        <thead><tr><th></th>${CHART.backnesses.map(([, label]) => `<th scope="col">${esc(label)}</th>`).join("")}</tr></thead>
+        <tbody>${heights.map(([key, label]) => `<tr><th scope="row">${esc(label)}</th>${CHART.backnesses.map(([b]) => cell(key, b)).join("")}</tr>`).join("")}</tbody>
+    </table></div>
+    <p class="chart-note">Where a cell has two vowels, the unrounded one is on the left.</p>`;
+}
+
+function phonologyPage(res, language) {
+    const { phonemes, graphemes } = phonology.getPhonology(language.id);
+
+    if (phonemes.length === 0 && graphemes.length === 0) {
+        sendHtml(res, 200, languageShell(language, "phonology", `<p class="muted">No sounds or spelling have been set for this language yet.${
+            ifEditing(' Open it in the <a href="/dictionary/editor">editor</a> and choose <em>Sounds and spelling</em>.')}</p>`));
+        return;
+    }
+
+    const report = phonology.analyze(language.id);
+    const consonants = phonemes.filter((p) => p.kind === "consonant");
+    const vowels = phonemes.filter((p) => p.kind === "vowel");
+    const unplaced = phonemes.filter((p) => (p.kind === "consonant" ? !(p.place && p.manner) : !(p.height && p.backness)));
+
+    const tile = (label, value, detail = "") => `<div class="stat-tile">
+        <div class="stat-value">${value}</div>
+        <div class="stat-label">${esc(label)}</div>
+        ${detail ? `<div class="stat-detail">${detail}</div>` : ""}
+    </div>`;
+
+    const spelling = graphemes.length
+        ? `<section class="chart-card">
+        <h2>Spelling</h2>
+        <p class="chart-note">Each letter (or group of letters) and the sound it stands for. Longer groups win: “kh” is read before “k”.</p>
+        <table class="relations spelling-table">
+            <thead><tr><th>Letters</th><th>Sound</th><th>Uses</th><th>Example</th><th></th></tr></thead>
+            <tbody>${report.letterStats.map((l, i) => `<tr>
+                <td><strong class="conlang">${esc(l.grapheme)}</strong></td>
+                <td>${ipa(phonology.slashed([l.ipa]))}</td>
+                <td class="num">${l.count}</td>
+                <td>${l.example ? `<a class="conlang" href="${entryUrl(language.slug, l.example)}">${esc(l.example)}</a>` : '<span class="muted">—</span>'}</td>
+                <td class="muted">${esc(graphemes[i] && graphemes[i].note ? graphemes[i].note : "")}</td>
+            </tr>`).join("")}</tbody>
+        </table>
+    </section>`
+        : "";
+
+    const coverage = graphemes.length
+        ? `<section class="chart-card">
+        <h2>Coverage</h2>
+        <p>${report.transcribed.toLocaleString("en-US")} of ${report.wordCount.toLocaleString("en-US")} headwords are spelled entirely with letters set above.</p>
+        ${report.problems.length
+            ? `<p class="chart-note">These headwords use letters the spelling doesn't cover${report.problems.length > 40 ? " (the first 40)" : ""}:</p>
+        <ul class="problem-list">${report.problems.slice(0, 40).map((p) => `<li><a class="conlang" href="${entryUrl(language.slug, p.headword)}">${esc(p.headword)}</a> <span class="muted">— ${p.unknown.map((u) => `<span class="conlang">${esc(u)}</span>`).join(", ")}</span></li>`).join("")}</ul>`
+            : ""}
+        ${report.unspelled.length
+            ? `<p class="chart-note">Sounds in the inventory with no letter: ${report.unspelled.map(ipa).join(" ")}</p>`
+            : ""}
+    </section>`
+        : "";
+
+    const used = report.phonemeStats.filter((p) => p.count > 0);
+    const frequency = used.length
+        ? `<section class="chart-card">
+        <h2>How often each sound occurs</h2>
+        <p class="chart-note">Across all headwords, counted from the spelling. Never used: ${
+            report.phonemeStats.filter((p) => p.count === 0 && graphemes.length).map((p) => ipa(p.ipa)).join(" ") || "none"}.</p>
+        ${charts.barList(used.slice().sort((a, b) => b.count - a.count).map((p) => ({ label: p.ipa, count: p.count })))}
+    </section>`
+        : "";
+
+    const body = `<div class="viz">
+    <div class="stat-tiles">
+        ${tile("Consonants", consonants.length)}
+        ${tile("Vowels", vowels.length)}
+        ${graphemes.length ? tile("Letters and letter groups", graphemes.length) : ""}
+        ${report.totalPhonemes ? tile("Consonant : vowel", ratioText(report.consonants, report.vowels), "by sounds, from the spelling") : ""}
+    </div>
+    ${consonants.length ? `<section class="chart-card"><h2>Consonants</h2>${consonantChart(consonants)}</section>` : ""}
+    ${vowels.length ? `<section class="chart-card"><h2>Vowels</h2>${vowelChart(vowels)}</section>` : ""}
+    ${unplaced.length ? `<section class="chart-card"><h2>Other sounds</h2><p>${unplaced.map((p) => ipa(p.ipa)).join(" ")}</p></section>` : ""}
+    ${spelling}
+    ${coverage}
+    ${frequency}
+    <p class="muted"><a href="/dictionary/correspondences">Sound correspondences between related languages →</a></p>
+</div>`;
+
+    sendHtml(res, 200, languageShell(language, "phonology", body));
+}
+
+// ---- Sound correspondences between a language and its descendant ----
+
+function correspondencesPage(res, params) {
+    const pairs = correspondences.relatedPairs()
+        .map((p) => ({ ...p, from: dict.getLanguage(p.from_id), to: dict.getLanguage(p.to_id) }))
+        .filter((p) => p.from && p.to);
+
+    const fromSlug = params.get("from");
+    const toSlug = params.get("to");
+    const chosen = pairs.find((p) => p.from.slug === fromSlug && p.to.slug === toSlug) || null;
+
+    const pairLinks = pairs.length
+        ? `<ul class="pair-list">${pairs.map((p) => `<li${p === chosen ? ' class="active"' : ""}><a href="/dictionary/correspondences?from=${encodeURIComponent(p.from.slug)}&amp;to=${encodeURIComponent(p.to.slug)}">${esc(p.from.name)} → ${esc(p.to.name)}</a> <span class="muted">${p.links} word${p.links === 1 ? "" : "s"}</span></li>`).join("")}</ul>`
+        : `<p class="muted">No words are linked as <em>inherited</em> between two languages yet.${ifEditing(' Add ancestor forms to words in the <a href="/dictionary/editor">editor</a>.')}</p>`;
+
+    let detail = "";
+
+    if (chosen) {
+        const result = correspondences.correspond(chosen.from.id, chosen.to.id);
+        const names = { fromName: chosen.from.name, toName: chosen.to.name };
+        const notes = [];
+        if (!result.fromOrthography) {
+            notes.push(`${esc(chosen.from.name)} has no spelling set, so its letters are compared as if each were a sound.`);
+        }
+        if (!result.toOrthography) {
+            notes.push(`${esc(chosen.to.name)} has no spelling set, so its letters are compared as if each were a sound.`);
+        }
+        if (result.skipped) {
+            notes.push(`${result.skipped} linked word pair${result.skipped === 1 ? " was" : "s were"} left out because a headword uses a letter its language's spelling doesn't cover.`);
+        }
+
+        const outcomes = new Map();
+        for (const f of result.flows) {
+            if (!outcomes.has(f.from)) {
+                outcomes.set(f.from, 0);
+            }
+            outcomes.set(f.from, outcomes.get(f.from) + 1);
+        }
+        const kindLabel = (f) => (f.from === correspondences.GAP ? "gained" : f.to === correspondences.GAP ? "lost" : f.from === f.to ? "unchanged" : "changed");
+
+        const rows = result.flows.map((f) => {
+            const total = result.fromTotals.get(f.from);
+            const share = f.from === correspondences.GAP ? "" : `${Math.round((f.count / total) * 100)}%`;
+            const split = f.from !== correspondences.GAP && outcomes.get(f.from) > 1 ? ' <span class="badge small" title="This sound has more than one outcome">split</span>' : "";
+            const examples = f.examples.map((e) => `<span class="conlang">${esc(e.from)}</span> → <span class="conlang">${esc(e.to)}</span>`).join("; ");
+            return `<tr class="flow-row flow-${kindLabel(f)}">
+                <td>${ipa(f.from)}</td><td class="arrow">→</td><td>${ipa(f.to)}${split}</td>
+                <td class="num">${f.count}</td><td class="num">${share}</td><td>${kindLabel(f)}</td><td>${examples}</td>
+            </tr>`;
+        }).join("");
+
+        detail = `<h2>${langBadge(chosen.from.name, chosen.from.display_color, chosen.from.ink, languageUrl(chosen.from.slug))} →
+            ${langBadge(chosen.to.name, chosen.to.display_color, chosen.to.ink, languageUrl(chosen.to.slug))}</h2>
+        <p class="muted">${result.used} linked word pair${result.used === 1 ? "" : "s"} lined up sound by sound.
+            A ribbon's thickness is how often that sound turned into the other; <strong>∅</strong> marks a sound lost on the way down (right) or gained (left).
+            A sound with several outcomes is a <em>split</em>, usually conditioned by the sounds around it: look at its examples.</p>
+        ${notes.map((n) => `<p class="chart-note">${n}</p>`).join("")}
+        ${result.flows.length
+            ? `<div class="flow-key"><span class="flow-key-same">unchanged</span> <span class="flow-key-change">changed</span> <span class="flow-key-loss">lost</span> <span class="flow-key-gain">gained</span></div>
+        <div class="flow-scroll">${correspondences.renderFlow(result, names)}</div>
+        <h3>Every correspondence</h3>
+        <div class="chart-scroll"><table class="relations correspondence-table">
+            <thead><tr><th>${esc(chosen.from.name)}</th><th></th><th>${esc(chosen.to.name)}</th><th>Times</th><th>Of that sound</th><th></th><th>Examples</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table></div>`
+            : '<p class="muted">Nothing to compare yet.</p>'}`;
+    }
+
+    sendHtml(
+        res,
+        200,
+        layout({
+            title: "Sound correspondences – Dictionary",
+            search: { q: "" },
+            body: `<main class="content wide correspondences-page">
+    <p class="crumbs"><a href="/dictionary">Dictionary</a> › <a href="/dictionary/family">Language family</a> › Sound correspondences</p>
+    <h1>Sound correspondences</h1>
+    <p class="muted">For a language and one that descends from it, how the sounds of the words you have linked as <em>inherited</em> line up. It is a way to check that your sound changes are regular.</p>
+    ${pairLinks}
+    ${detail}
 </main>`
         })
     );
@@ -868,6 +1087,11 @@ module.exports = async function dictionaryPages(req, res, url) {
         return true;
     }
 
+    if (first === "correspondences" && parts.length === 1) {
+        correspondencesPage(res, url.searchParams);
+        return true;
+    }
+
     if (first === "family" && parts.length === 1) {
         familyPage(res);
         return true;
@@ -892,6 +1116,8 @@ module.exports = async function dictionaryPages(req, res, url) {
             statsPage(res, language);
         } else if (url.searchParams.get("view") === "sounds") {
             soundsPage(res, language, url.searchParams);
+        } else if (url.searchParams.get("view") === "phonology") {
+            phonologyPage(res, language);
         } else {
             languagePage(res, language, url.searchParams);
         }
