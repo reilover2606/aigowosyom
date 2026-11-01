@@ -199,7 +199,7 @@ check("changes are named from the features that differ and the neighbours", () =
     assert.deepStrictEqual(named([], ["ə"], "k", "t"), ["epenthesis (a vowel appears)"]);
     assert.deepStrictEqual(named(["k"], ["t͡ʃ"], "#", "i"), ["affrication", "palatalization"]);
     assert.deepStrictEqual(named(["e"], ["i"], "k", "t"), ["raising"]);
-    assert.ok(named(["m", "p"], ["b"], "a", "a")[0].startsWith("coalescence (nasal + stop): manner from p, voicing from m"));
+    assert.ok(named(["m", "p"], ["b"], "a", "a")[0].startsWith("coalescence (nasal + stop): m gives voicing; p gives manner; both give place"));
     assert.deepStrictEqual(named(["a"], ["aː"], "k", "t"), ["lengthening"]);
 });
 

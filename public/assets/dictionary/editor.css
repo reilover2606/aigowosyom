@@ -565,3 +565,10 @@ dialog.phonology-dialog {
     color: var(--danger, #b3261e);
     font-size: 1rem;
 }
+
+.import-senses {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 6px 0;
+}

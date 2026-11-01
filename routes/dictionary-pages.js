@@ -1120,7 +1120,9 @@ async function correspondencesPage(res, params) {
             const where = c.side === "both" ? esc(c.what) : c.edge ? `at ${esc(c.what)}` : c.side === "left" ? `after ${esc(c.what)}` : `before ${esc(c.what)}`;
             const rest = c.elsewhere ? `; elsewhere ${ipa(c.from)} ${c.elsewhere.to === c.from ? "stays" : `becomes ${ipa(c.elsewhere.to)}`} (${c.elsewhere.count} of ${c.elsewhere.of})` : "";
             const caution = c.exceptions ? ` <span class="muted">(${c.exceptions} exception${c.exceptions === 1 ? "" : "s"})</span>` : "";
-            return `<li>${ipa(c.from)} → ${ipa(c.to)} ${where}: ${c.hits} of ${c.of}${rest}.${caution}</li>`;
+            const chance = c.chance < 0.001 ? "chance under 0.1%" : `chance ${(c.chance * 100).toFixed(c.chance < 0.1 ? 1 : 0)}%`;
+            const strength = c.weak ? ` <span class="badge small" title="This could easily be luck with so few words">weak lead, ${chance}</span>` : ` <span class="muted">(${chance} that it is luck)</span>`;
+            return `<li class="${c.weak ? "weak" : ""}">${ipa(c.from)} → ${ipa(c.to)} ${where}: ${c.hits} of ${c.of}${rest}.${caution}${strength}</li>`;
         }).join("");
 
         detail = `<h2>${langBadge(chosen.from.name, chosen.from.display_color, chosen.from.ink, languageUrl(chosen.from.slug))} →

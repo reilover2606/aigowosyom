@@ -634,6 +634,7 @@
         const sensesEl = h("div", { class: "list-rows" });
         const variantsEl = h("div", { class: "list-rows" });
         const ancestorsEl = h("div", { class: "list-rows" });
+        const importEl = h("div", { class: "import-senses" });
 
         // ---- Senses ----
         function renderSenses() {
@@ -748,12 +749,13 @@
                                         });
                                         markDirty();
                                         renderAncestors();
+                                        renderImport();
                                     }
                                 })),
                         kindSelect(
                             [["inherited", "inherited from"], ["borrowed", "borrowed from"], ["areal", "areally related to"]],
                             ancestor.kind,
-                            (value) => { ancestor.kind = value; }
+                            (value) => { ancestor.kind = value; renderImport(); }
                         ),
                         h("input", {
                             type: "text",
@@ -768,15 +770,53 @@
                             draft.ancestors.splice(i, 1);
                             markDirty();
                             renderAncestors();
+                            renderImport();
                         })
                     )
                 )
             );
         }
 
+        // ---- Import the senses of the ancestor word(s) ----
+        // One button per ancestor (inherited ones first): copies all of its senses here, skipping any
+        // this word already has, so the parent language's meanings are a click away.
+        function renderImport() {
+            const ancestors = draft.ancestors
+                .filter((a) => a.id)
+                .sort((a, b) => Number(b.kind === "inherited") - Number(a.kind === "inherited"));
+            importEl.replaceChildren(...ancestors.map((ancestor) => h("button", {
+                type: "button",
+                title: `Copy every definition of ${ancestor.label} (${ancestor.language}) into this word`,
+                onclick: async (event) => {
+                    const button = event.currentTarget;
+                    button.disabled = true;
+                    try {
+                        const parent = await api("GET", `/api/dictionary/words/${ancestor.id}`);
+                        const have = new Set(draft.senses.map((x) => x.trim()));
+                        const fresh = parent.senses.filter((x) => x.trim() && !have.has(x.trim()));
+                        if (draft.senses.length === 1 && !draft.senses[0].trim()) {
+                            draft.senses = [];
+                        }
+                        draft.senses.push(...fresh);
+                        if (!draft.senses.length) {
+                            draft.senses = [""];
+                        }
+                        markDirty();
+                        renderSenses();
+                        setStatus(fresh.length ? `Imported ${fresh.length} sense${fresh.length === 1 ? "" : "s"} from ${ancestor.label}.` : `${ancestor.label} has no senses this word doesn't already have.`, fresh.length ? "ok" : "");
+                    } catch (error) {
+                        setStatus(error.message, "error");
+                    } finally {
+                        button.disabled = false;
+                    }
+                }
+            }, `Import senses from ${ancestor.label} (${ancestor.language})`)));
+        }
+
         renderSenses();
         renderVariants();
         renderAncestors();
+        renderImport();
 
         const posList = h("datalist", { id: "pos-suggestions" },
             ...POS_SUGGESTIONS.map((pos) => h("option", { value: pos })));
@@ -824,6 +864,7 @@
                 h("span", { class: "label" }, "Definitions",
                     h("span", { class: "hint" }, " — one per sense. ", LINK_HINT)),
                 sensesEl,
+                importEl,
                 h("div", {}, h("button", {
                     type: "button",
                     onclick: () => {
