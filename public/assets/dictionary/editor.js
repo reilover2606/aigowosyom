@@ -1216,11 +1216,14 @@
         }
 
         function customSection() {
-            const custom = draft.phonemes.filter((p) => !onChart.has(p.ipa));
+            const custom = draft.phonemes.filter((p) => !onChart.has(p.ipa) && p.kind !== "tone" && p.kind !== "stress");
             const input = h("input", { type: "text", class: "ipa-input", placeholder: "e.g. kʰ, aː, ã", size: "8", autocomplete: "off" });
             const kind = h("select", {},
                 h("option", { value: "consonant" }, "consonant"),
-                h("option", { value: "vowel" }, "vowel"));
+                h("option", { value: "vowel" }, "vowel"),
+                h("option", { value: "tone" }, "tone"),
+                h("option", { value: "stress" }, "stress mark"));
+            const label = h("input", { type: "text", size: "12", placeholder: "label (e.g. high)", autocomplete: "off" });
             // The marks that go after a symbol (length, aspiration, nasalisation, ...).
             const marks = h("span", { class: "marks" }, ...chart.modifiers.map((m) => h("button", {
                 type: "button",
@@ -1238,7 +1241,8 @@
                 }
                 errorEl.textContent = "";
                 const base = onChart.get(ipa) || onChart.get([...ipa][0]);
-                draft.phonemes.push(base ? { ipa, kind: base.kind } : { ipa, kind: kind.value });
+                const given = label.value.trim();
+                draft.phonemes.push({ ipa, kind: base ? base.kind : kind.value, ...(given ? { label: given } : {}) });
                 render();
             };
             input.addEventListener("keydown", (event) => {
@@ -1251,12 +1255,37 @@
                 h("span", { class: "label" }, "Other sounds",
                     h("span", { class: "hint" }, " — anything not on the charts: long, aspirated or nasal versions, clicks, tones…")),
                 h("div", { class: "chips" }, ...custom.map((p) => h("span", { class: "chip" },
-                    h("span", { class: "ipa" }, p.ipa), h("small", {}, p.kind),
+                    h("span", { class: "ipa" }, p.ipa), h("small", {}, p.label ? `${p.kind}: ${p.label}` : p.kind),
                     h("button", {
                         type: "button", title: "Remove",
                         onclick: () => { draft.phonemes = draft.phonemes.filter((q) => q !== p); render(); }
                     }, "×")))),
-                h("div", { class: "row" }, input, kind, h("button", { type: "button", onclick: add }, "Add"), marks));
+                h("div", { class: "row" }, input, kind, label, h("button", { type: "button", onclick: add }, "Add"), marks));
+        }
+
+        // Tones and stress marks: chosen from the usual ones or added below. They are not sounds, but
+        // spelling can use them (á = a˥), and words keep them in their transcriptions.
+        function prosodySection() {
+            const presets = [...chart.tones, ...chart.stress];
+            const others = draft.phonemes.filter((p) => (p.kind === "tone" || p.kind === "stress") && !presets.some((q) => q.ipa === p.ipa));
+            return h("div", { class: "field" },
+                h("h3", {}, "Tones and stress"),
+                h("p", { class: "hint" }, "For tonal languages (the Chao tone letters ˥ high … ˩ low, two or three together for a contour), for pitch accent, and for stress marks. A letter in the spelling can then stand for a vowel with a tone, such as á = a˥, or for a mark on its own. Other marks go in the box below, as tone or stress."),
+                h("div", { class: "prosody-keys" }, ...presets.map((symbol) => h("button", {
+                    type: "button",
+                    class: `ipa-key wide${has(symbol.ipa) ? " on" : ""}`,
+                    title: symbol.label,
+                    "aria-pressed": has(symbol.ipa) ? "true" : "false",
+                    onclick: () => toggle(symbol)
+                }, h("span", {}, symbol.ipa), h("small", {}, symbol.label)))),
+                others.length
+                    ? h("div", { class: "chips" }, ...others.map((p) => h("span", { class: "chip" },
+                        h("span", { class: "ipa" }, p.ipa), h("small", {}, p.label ? `${p.kind}: ${p.label}` : p.kind),
+                        h("button", {
+                            type: "button", title: "Remove",
+                            onclick: () => { draft.phonemes = draft.phonemes.filter((q) => q !== p); render(); }
+                        }, "×"))))
+                    : null);
         }
 
         function soundsTab() {
@@ -1266,6 +1295,7 @@
                 h("p", { class: "hint" }, `Click a symbol to add it to the inventory, and again to take it out. ${consonants} consonant${consonants === 1 ? "" : "s"}, ${vowels} vowel${vowels === 1 ? "" : "s"}.`),
                 h("h3", {}, "Consonants"), consonantTable(),
                 h("h3", {}, "Vowels"), vowelTable(),
+                prosodySection(),
                 customSection());
         }
 
@@ -1277,54 +1307,94 @@
             }
             const unspelled = symbols.filter((x) => !spelledSounds.has(x));
 
+            const MARK = /^[ːˑʰʷʲˠˤʼ\p{M}]/u;
+            const describe = (ipa) => {
+                const text = (ipa || "").normalize("NFC");
+                if (!text) {
+                    return { cls: "", text: "" };
+                }
+                if (text === "∅") {
+                    return { cls: "ok", text: "silent" };
+                }
+                if (MARK.test(text)) {
+                    const joins = symbols.filter((x) => x.endsWith(text) && x !== text);
+                    return joins.length || symbols.includes(text)
+                        ? { cls: "ok", text: `joins the sound before it${joins.length ? ` (${joins.join(" ")})` : ""}` }
+                        : { cls: "bad", text: `no sound in the inventory ends in ${text}` };
+                }
+                const parts = segmentIpa(text, symbols);
+                return parts ? { cls: "ok", text: `/${parts.join("")}/` } : { cls: "bad", text: "not in the inventory" };
+            };
+
             const row = (g) => {
-                const parts = segmentIpa((g.ipa || "").normalize("NFC"), symbols);
-                const status = h("span", { class: `spell-status ${!g.ipa ? "" : parts ? "ok" : "bad"}` },
-                    !g.ipa ? "" : parts ? `/${parts.join("")}/` : "not in the inventory");
+                const state = describe(g.ipa);
+                const status = h("span", { class: `spell-status ${state.cls}` }, state.text);
                 const sound = h("input", {
-                    type: "text", class: "ipa-input", value: g.ipa, size: "10", placeholder: "IPA", autocomplete: "off",
+                    type: "text", class: "ipa-input", value: g.ipa, size: "9", placeholder: "IPA, or ∅", autocomplete: "off",
                     oninput: () => {
                         g.ipa = sound.value;
-                        const next = segmentIpa(sound.value.normalize("NFC"), symbols);
-                        status.className = `spell-status ${!sound.value ? "" : next ? "ok" : "bad"}`;
-                        status.textContent = !sound.value ? "" : next ? `/${next.join("")}/` : "not in the inventory";
+                        const next = describe(sound.value);
+                        status.className = `spell-status ${next.cls}`;
+                        status.textContent = next.text;
                     }
+                });
+                const where = h("select", { onchange: () => { g.where_pos = where.value || null; } },
+                    h("option", { value: "" }, "anywhere"),
+                    h("option", { value: "start", selected: g.where_pos === "start" }, "word start"),
+                    h("option", { value: "end", selected: g.where_pos === "end" }, "word end"));
+                const condition = (key, placeholder) => h("input", {
+                    type: "text", value: g[key] || "", size: "9", placeholder, autocomplete: "off",
+                    oninput: (event) => { g[key] = event.target.value; }
                 });
                 return h("tr", {},
                     h("td", {}, h("input", {
-                        type: "text", class: "conlang", value: g.grapheme, size: "5", placeholder: "letter(s)", autocomplete: "off",
+                        type: "text", class: "conlang", value: g.grapheme, size: "4", placeholder: "letter(s)", autocomplete: "off",
                         oninput: (event) => { g.grapheme = event.target.value; }
                     })),
                     h("td", {}, sound, " ", status),
+                    h("td", {}, where),
+                    h("td", {}, condition("after_text", "n, m  or  !vowel")),
+                    h("td", {}, condition("before_text", "i, e  or  front")),
                     h("td", {}, h("input", {
-                        type: "text", value: g.note || "", size: "24", placeholder: "note (optional)", autocomplete: "off",
+                        type: "text", value: g.note || "", size: "12", placeholder: "note", autocomplete: "off",
                         oninput: (event) => { g.note = event.target.value; }
                     })),
-                    h("td", {}, h("button", {
-                        type: "button", title: "Remove this letter",
-                        onclick: () => { draft.graphemes = draft.graphemes.filter((x) => x !== g); render(); }
-                    }, "×")));
+                    h("td", { class: "row-tools" },
+                        h("button", {
+                            type: "button", title: "Add another rule for this letter (for when it sounds different in some context)",
+                            onclick: () => {
+                                const at = draft.graphemes.indexOf(g);
+                                draft.graphemes.splice(at + 1, 0, { grapheme: g.grapheme, ipa: "", note: "", where_pos: null, after_text: "", before_text: "" });
+                                render();
+                            }
+                        }, "+"),
+                        h("button", {
+                            type: "button", title: "Remove this rule",
+                            onclick: () => { draft.graphemes = draft.graphemes.filter((x) => x !== g); render(); }
+                        }, "×")));
             };
 
+            const classList = h("span", { class: "ipa-small" }, chart.classes.join(", "));
             return h("div", {},
                 draft.phonemes.length === 0
                     ? h("p", { class: "status error" }, "Choose the language's sounds first (the Sounds tab); each letter then says which of them it stands for.")
                     : null,
-                h("p", { class: "hint" }, "The spelling is taken to be phonetic: each letter (or group, such as “kh”) stands for one sound or a short run of sounds (x = ks). Longer groups win when a word is read. Matching ignores capitals but not accents, so ā and a are separate letters."),
+                h("p", { class: "hint" }, "The spelling is taken to be phonetic: each letter (or group, such as “kh”) stands for one sound or a short run of sounds (x = ks), or ∅ for a silent letter. Longer groups win when a word is read. Matching ignores capitals but not accents, so ā and a are separate letters."),
+                h("p", { class: "hint" }, "A letter can have more than one rule (the + button): the ones with a context are tried first, in the order shown, and the one with no context is used otherwise. A context can limit a rule to the start or end of a word, to after something, or to before something. Name letters, sounds or classes (", classList, "), separated by commas, and put ! first for “anything but”. A sound that begins with a mark (ʰ ʲ ː) joins the sound before it: with nʰ in the inventory, h after n reads as nʰ."),
                 h("table", { class: "spelling-edit" },
-                    h("thead", {}, h("tr", {}, h("th", {}, "Letters"), h("th", {}, "Sound(s)"), h("th", {}, "Note"), h("th", {}))),
+                    h("thead", {}, h("tr", {}, h("th", {}, "Letters"), h("th", {}, "Sound(s)"), h("th", {}, "Where"), h("th", {}, "After"), h("th", {}, "Before"), h("th", {}, "Note"), h("th", {}))),
                     h("tbody", {}, ...draft.graphemes.map(row))),
                 h("div", { class: "row" },
                     h("button", {
                         type: "button",
-                        onclick: () => { draft.graphemes.push({ grapheme: "", ipa: "", note: "" }); render(); }
+                        onclick: () => { draft.graphemes.push({ grapheme: "", ipa: "", note: "", where_pos: null, after_text: "", before_text: "" }); render(); }
                     }, "Add a letter"),
                     h("button", {
                         type: "button",
                         disabled: unspelled.length === 0,
                         title: "Adds a letter for each sound that has none, using the IPA symbol itself; change them to your spelling",
                         onclick: () => {
-                            unspelled.forEach((x) => draft.graphemes.push({ grapheme: x, ipa: x, note: "" }));
+                            unspelled.forEach((x) => draft.graphemes.push({ grapheme: x, ipa: x, note: "", where_pos: null, after_text: "", before_text: "" }));
                             render();
                         }
                     }, `Add a letter for each unspelled sound (${unspelled.length})`)),
@@ -1333,13 +1403,103 @@
                     : null);
         }
 
+        // The data as the server takes it.
+        function payload() {
+            return {
+                phonemes: draft.phonemes,
+                graphemes: draft.graphemes
+                    .filter((g) => g.grapheme.trim() || g.ipa.trim())
+                    .map((g) => ({
+                        grapheme: g.grapheme, ipa: g.ipa, note: g.note,
+                        where_pos: g.where_pos || null, after_text: g.after_text || null, before_text: g.before_text || null
+                    })),
+                prosody: draft.prosody
+            };
+        }
+
+        const STRESS_RULES = [
+            ["none", "None: stress is only where the spelling marks it"],
+            ["initial", "The first syllable"],
+            ["second", "The second syllable"],
+            ["penultimate", "The second to last syllable"],
+            ["antepenultimate", "The third to last syllable"],
+            ["final", "The last syllable"],
+            ["weight", "Second to last if heavy, otherwise third to last"]
+        ];
+
+        function prosodyTab() {
+            const prosody = draft.prosody;
+            const marks = draft.phonemes.filter((p) => p.kind === "stress" || p.kind === "tone");
+            const input = (key, placeholder, size = 24) => h("input", {
+                type: "text", value: prosody[key] || "", size, placeholder, autocomplete: "off",
+                oninput: (event) => { prosody[key] = event.target.value; tryWord(); }
+            });
+            const sample = h("input", { type: "text", class: "conlang", size: "14", placeholder: "a word to try", autocomplete: "off" });
+            const result = h("span", { class: "try-result" });
+            let timer = null;
+            function tryWord() {
+                clearTimeout(timer);
+                timer = setTimeout(async () => {
+                    if (!sample.value.trim()) {
+                        result.textContent = "";
+                        return;
+                    }
+                    try {
+                        const read = await api("POST", "/api/dictionary/phonology-preview", { data: payload(), word: sample.value });
+                        result.className = `try-result ${read.ipa ? "ok" : "bad"}`;
+                        result.textContent = read.ipa || (read.unknown.length ? `no letter for: ${read.unknown.join(", ")}` : "nothing to read");
+                    } catch (error) {
+                        result.className = "try-result bad";
+                        result.textContent = error.message;
+                    }
+                }, 200);
+            }
+            sample.addEventListener("input", tryWord);
+
+            return h("div", {},
+                h("p", { class: "hint" }, "How words divide into syllables, and where stress falls when the spelling doesn't say. Stress marks written in the spelling (a letter set to ˈ) always win over the rule, so a language can have a default and mark its exceptions. Pitch-accent languages can place their accent mark by rule too: pick a tone as the mark."),
+                h("div", { class: "field check" },
+                    h("input", { type: "checkbox", id: "show-syllables", checked: Boolean(prosody.show_syllables), onchange: (event) => { prosody.show_syllables = event.target.checked ? 1 : 0; tryWord(); } }),
+                    h("label", { for: "show-syllables" }, "Show syllable boundaries (dots) in transcriptions")),
+                h("div", { class: "field" },
+                    h("label", {}, "Diphthongs", h("span", { class: "hint" }, " — vowel pairs that make one syllable, separated by spaces (ai au ei). Other vowels in a row are separate syllables.")),
+                    input("diphthongs", "ai au")),
+                h("div", { class: "field" },
+                    h("label", {}, "Syllabic consonants", h("span", { class: "hint" }, " — consonants that can be a syllable on their own, when no vowel is next to them (n m l r in vlk, prst). They are written with a ̩ under them in transcriptions.")),
+                    input("syllabic", "l r n m")),
+                h("div", { class: "field" },
+                    h("label", {}, "Onset clusters", h("span", { class: "hint" }, " — consonant clusters that may begin a syllable (pr tr kl st). Any single consonant always may. A longer cluster between vowels goes to the next syllable as far as this list allows; the rest closes the one before.")),
+                    input("onsets", "pr tr kr")),
+                h("div", { class: "field" },
+                    h("label", {}, "Most consonants a syllable can end in"),
+                    h("select", { onchange: (event) => { prosody.max_coda = event.target.value === "" ? null : Number(event.target.value); tryWord(); } },
+                        h("option", { value: "" }, "no limit"),
+                        ...[0, 1, 2, 3].map((n) => h("option", { value: String(n), selected: prosody.max_coda === n }, n === 0 ? "0 (open syllables only)" : String(n))))),
+                h("div", { class: "field" },
+                    h("label", {}, "Where stress falls", h("span", { class: "hint" }, " — in a word the spelling doesn't mark. “Heavy” means a long vowel, a diphthong, or a syllable ending in a consonant.")),
+                    h("select", { onchange: (event) => { prosody.stress_rule = event.target.value; tryWord(); } },
+                        ...STRESS_RULES.map(([value, label]) => h("option", { value, selected: prosody.stress_rule === value }, label)))),
+                h("div", { class: "field" },
+                    h("label", {}, "Mark for the stressed syllable", h("span", { class: "hint" }, " — a stress mark goes before the syllable; a tone goes after its vowel (pitch accent)")),
+                    marks.length
+                        ? h("select", { onchange: (event) => { prosody.stress_mark = event.target.value; tryWord(); } },
+                            ...marks.map((p) => h("option", { value: p.ipa, selected: prosody.stress_mark === p.ipa }, `${p.ipa}  ${p.label || p.kind}`)))
+                        : h("span", { class: "hint" }, "Add ˈ (or a tone) under Sounds, Tones and stress first.")),
+                h("div", { class: "field check" },
+                    h("input", { type: "checkbox", id: "skip-mono", checked: prosody.skip_monosyllables !== 0, onchange: (event) => { prosody.skip_monosyllables = event.target.checked ? 1 : 0; tryWord(); } }),
+                    h("label", { for: "skip-mono" }, "Leave one-syllable words unmarked")),
+                h("div", { class: "field try-box" },
+                    h("label", {}, "Try a word", h("span", { class: "hint" }, " — read with the settings on every tab, as they stand now")),
+                    h("div", { class: "row" }, sample, result)));
+        }
+
         function render() {
             put(tabs,
-                ...[["sounds", "Sounds"], ["spelling", "Spelling"]].map(([key, label]) => h("button", {
+                ...[["sounds", "Sounds"], ["spelling", "Spelling"], ["prosody", "Syllables and stress"]].map(([key, label]) => h("button", {
                     type: "button", class: tab === key ? "active" : "",
                     onclick: () => { tab = key; render(); }
                 }, label)));
-            put(body, tab === "sounds" ? soundsTab() : spellingTab());
+            put(body, tab === "sounds" ? soundsTab() : tab === "spelling" ? spellingTab() : prosodyTab());
         }
 
         function put(el, ...kids) {
@@ -1357,12 +1517,7 @@
                     onclick: async () => {
                         errorEl.textContent = "";
                         try {
-                            await api("PUT", `/api/dictionary/phonology/${language.id}`, {
-                                phonemes: draft.phonemes,
-                                graphemes: draft.graphemes
-                                    .filter((g) => g.grapheme.trim() || g.ipa.trim())
-                                    .map((g) => ({ grapheme: g.grapheme, ipa: g.ipa, note: g.note }))
-                            });
+                            await api("PUT", `/api/dictionary/phonology/${language.id}`, payload());
                             dialog.close();
                         } catch (error) {
                             errorEl.textContent = error.message;

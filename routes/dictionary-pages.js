@@ -265,14 +265,20 @@ function languageShell(language, activeTab, content) {
 
 function soundsPage(res, language, params) {
     const keepMarks = params.get("marks") === "keep";
-    const patterns = soundPatterns(language.id, { keepMarks });
+    // With a spelling set the grid is of sounds, unless letters are asked for.
+    const canUseSounds = phonology.hasOrthography(language.id);
+    const mode = canUseSounds && params.get("by") !== "letters" ? "sounds" : "letters";
+    const patterns = soundPatterns(language.id, { keepMarks, mode });
     const base = languageUrl(language.slug);
+    const bySounds = patterns.mode === "sounds";
+    const unitName = bySounds ? "sound" : "letter";
+    const unitClass = bySounds ? "ipa" : "conlang";
 
     if (patterns.letters.length === 0) {
         sendHtml(
             res,
             200,
-            languageShell(language, "sounds", '<p class="muted">No entries yet, so there are no letter patterns to show.</p>')
+            languageShell(language, "sounds", `<p class="muted">No entries yet, so there are no ${unitName} patterns to show.</p>`)
         );
         return;
     }
@@ -280,7 +286,7 @@ function soundsPage(res, language, params) {
     const { letters, vowelCount } = patterns;
     const letterList = (list) =>
         list.length
-            ? list.map((l) => `<span class="conlang">${esc(l)}</span>`).join(" ")
+            ? list.map((l) => `<span class="${unitClass}">${esc(l)}</span>`).join(" ")
             : '<span class="muted">none</span>';
 
     const percentage = ((patterns.unattested / patterns.possible) * 100).toFixed(0);
@@ -294,23 +300,31 @@ function soundsPage(res, language, params) {
     const pairLabel = (pair) => `${pair.from} → ${pair.to}`;
 
     const html = `<div class="viz">
-    <p class="muted">Each cell counts how often the letter on the left is immediately followed by the letter along the top, across all headwords.
+    ${bySounds
+        ? `<p class="muted">Each cell counts how often the sound on the left is immediately followed by the sound along the top, across all headwords, read from the spelling
+        (so a digraph such as <em>kh</em> is one sound). The <strong>#</strong> row shows which sounds begin words and the <strong>#</strong> column which end them. Blank cells never occur.
+        Vowels come first, close to open, then consonants by manner and place. Tones and stress marks are not sounds in this grid.</p>
+    <p class="sort-control">Counted by:
+        <a href="${base}?view=sounds" class="active">sounds</a>
+        <a href="${base}?view=sounds&amp;by=letters">letters</a>
+    </p>${patterns.skipped ? `<p class="chart-note">${patterns.skipped} headword${patterns.skipped === 1 ? " is" : "s are"} left out because the spelling doesn't cover all its letters (see the <a href="${base}?view=phonology">Phonology</a> tab).</p>` : ""}`
+        : `<p class="muted">Each cell counts how often the letter on the left is immediately followed by the letter along the top, across all headwords.
         The <strong>#</strong> row shows which letters begin words and the <strong>#</strong> column which letters end them. Blank cells never occur.
         Vowels (a e i o u) come first, then consonants (<em>y</em> is a consonant); this is spelling, not phonemes, so a digraph such as <em>kh</em> reads as k then h.</p>
     <p class="sort-control">Accented letters:
-        <a href="${base}?view=sounds"${keepMarks ? "" : ' class="active"'}>merged with plain letters</a>
-        <a href="${base}?view=sounds&amp;marks=keep"${keepMarks ? ' class="active"' : ""}>kept distinct</a>
-    </p>
+        <a href="${base}?view=sounds&amp;by=letters"${keepMarks ? "" : ' class="active"'}>merged with plain letters</a>
+        <a href="${base}?view=sounds&amp;by=letters&amp;marks=keep"${keepMarks ? ' class="active"' : ""}>kept distinct</a>
+    </p>${canUseSounds ? `<p class="sort-control">Counted by: <a href="${base}?view=sounds">sounds</a> <a href="${base}?view=sounds&amp;by=letters" class="active">letters</a></p>` : ""}`}
 
     <div class="stat-tiles">
-        ${tile("Letters in use", letters.length, `${vowelCount} vowel${vowelCount === 1 ? "" : "s"}, ${patterns.consonantCount} consonant${patterns.consonantCount === 1 ? "" : "s"}`)}
-        ${tile("Letter pairs that never occur", `${percentage}%`, `${patterns.unattested.toLocaleString("en-US")} of ${patterns.possible.toLocaleString("en-US")} possible`)}
+        ${tile(bySounds ? "Sounds in use" : "Letters in use", letters.length, `${vowelCount} vowel${vowelCount === 1 ? "" : "s"}, ${patterns.consonantCount} consonant${patterns.consonantCount === 1 ? "" : "s"}`)}
+        ${tile(`${bySounds ? "Sound" : "Letter"} pairs that never occur`, `${percentage}%`, `${patterns.unattested.toLocaleString("en-US")} of ${patterns.possible.toLocaleString("en-US")} possible`)}
         ${tile("Never begin a word", `<span class="small-list">${letterList(patterns.neverInitial)}</span>`)}
         ${tile("Never end a word", `<span class="small-list">${letterList(patterns.neverFinal)}</span>`)}
     </div>
 
     <section class="chart-card">
-        <h2>Letter pairs</h2>
+        <h2>${bySounds ? "Sound" : "Letter"} pairs</h2>
         ${charts.heatmap({
             rows: patterns.rows,
             cols: patterns.cols,
@@ -324,7 +338,8 @@ function soundsPage(res, language, params) {
             colBreaks: [vowelCount, vowelCount + patterns.consonantCount, patterns.cols.length - 1].filter(
                 (i, idx, all) => i > 0 && i < patterns.cols.length && all.indexOf(i) === idx
             ),
-            ariaLabel: `Heatmap of how often each letter is followed by each other letter in ${language.name} headwords. The most common pairs are listed below.`
+            labelClass: unitClass,
+            ariaLabel: `Heatmap of how often each ${unitName} is followed by each other ${unitName} in ${language.name} headwords. The most common pairs are listed below.`
         })}
         ${charts.heatLegend(patterns.max)}
     </section>
@@ -333,7 +348,7 @@ function soundsPage(res, language, params) {
         <h2>Most common pairs</h2>
         <p class="chart-note">The same data as a ranked list.</p>
         ${charts.barList(
-            patterns.topPairs.map((pair) => ({ label: pairLabel(pair), count: pair.count, conlang: true }))
+            patterns.topPairs.map((pair) => ({ label: pairLabel(pair), count: pair.count, conlang: !bySounds }))
         )}
     </section>
 </div>`;
@@ -524,7 +539,7 @@ function renderEntry(word, language, index, multiple) {
         const spoken = phonology.transcribe(language.id, word.headword);
         if (spoken.complete) {
             sections.push(
-                `<${innerTag}>Pronunciation</${innerTag}><ul><li class="pronunciation"><span class="ipa">${esc(phonology.slashed(spoken.phonemes))}</span> <span class="muted">(from the spelling)</span></li></ul>`
+                `<${innerTag}>Pronunciation</${innerTag}><ul><li class="pronunciation"><span class="ipa">${esc(spoken.surface)}</span> <span class="muted">(from the spelling)</span></li></ul>`
             );
         }
     }
@@ -840,8 +855,34 @@ function vowelChart(vowels) {
     <p class="chart-note">Where a cell has two vowels, the unrounded one is on the left.</p>`;
 }
 
+// "at the start of a word, after n, m" for a spelling rule.
+function whenText(rule) {
+    const parts = [];
+    if (rule.where === "start") {
+        parts.push("at the start of a word");
+    } else if (rule.where === "end") {
+        parts.push("at the end of a word");
+    }
+    for (const [word, text] of [["after", rule.after], ["before", rule.before]]) {
+        if (text) {
+            parts.push(`${word} ${text.startsWith("not ") ? `not ${esc(text.slice(4))}` : esc(text)}`);
+        }
+    }
+    return parts.length ? parts.join(", ") : '<span class="muted">otherwise</span>';
+}
+
+const STRESS_RULE_TEXT = {
+    none: "no rule (stress is written in the spelling, or not marked)",
+    initial: "the first syllable",
+    second: "the second syllable",
+    penultimate: "the second to last syllable",
+    antepenultimate: "the third to last syllable",
+    final: "the last syllable",
+    weight: "the second to last syllable if it is heavy, otherwise the third to last"
+};
+
 function phonologyPage(res, language) {
-    const { phonemes, graphemes } = phonology.getPhonology(language.id);
+    const { phonemes, graphemes, prosody } = phonology.getPhonology(language.id);
 
     if (phonemes.length === 0 && graphemes.length === 0) {
         sendHtml(res, 200, languageShell(language, "phonology", `<p class="muted">No sounds or spelling have been set for this language yet.${
@@ -852,7 +893,9 @@ function phonologyPage(res, language) {
     const report = phonology.analyze(language.id);
     const consonants = phonemes.filter((p) => p.kind === "consonant");
     const vowels = phonemes.filter((p) => p.kind === "vowel");
-    const unplaced = phonemes.filter((p) => (p.kind === "consonant" ? !(p.place && p.manner) : !(p.height && p.backness)));
+    const unplaced = phonemes.filter((p) => (p.kind === "consonant" ? !(p.place && p.manner) : p.kind === "vowel" && !(p.height && p.backness)));
+    const tones = phonemes.filter((p) => p.kind === "tone");
+    const stresses = phonemes.filter((p) => p.kind === "stress");
 
     const tile = (label, value, detail = "") => `<div class="stat-tile">
         <div class="stat-value">${value}</div>
@@ -865,13 +908,14 @@ function phonologyPage(res, language) {
         <h2>Spelling</h2>
         <p class="chart-note">Each letter (or group of letters) and the sound it stands for. Longer groups win: “kh” is read before “k”.</p>
         <table class="relations spelling-table">
-            <thead><tr><th>Letters</th><th>Sound</th><th>Uses</th><th>Example</th><th></th></tr></thead>
-            <tbody>${report.letterStats.map((l, i) => `<tr>
+            <thead><tr><th>Letters</th><th>Sound</th><th>When</th><th>Uses</th><th>Example</th><th></th></tr></thead>
+            <tbody>${report.letterStats.map((l) => `<tr>
                 <td><strong class="conlang">${esc(l.grapheme)}</strong></td>
-                <td>${ipa(phonology.slashed([l.ipa]))}</td>
+                <td>${l.ipa === "∅" ? '<span class="muted">silent</span>' : ipa(l.ipa.match(/^[ːˑʰʷʲˠˤʼ\p{M}]/u) ? `+${l.ipa}` : phonology.slashed([l.ipa]))}</td>
+                <td class="when">${whenText(l)}</td>
                 <td class="num">${l.count}</td>
                 <td>${l.example ? `<a class="conlang" href="${entryUrl(language.slug, l.example)}">${esc(l.example)}</a>` : '<span class="muted">—</span>'}</td>
-                <td class="muted">${esc(graphemes[i] && graphemes[i].note ? graphemes[i].note : "")}</td>
+                <td class="muted">${esc(l.note || "")}</td>
             </tr>`).join("")}</tbody>
         </table>
     </section>`
@@ -891,6 +935,24 @@ function phonologyPage(res, language) {
     </section>`
         : "";
 
+    const hasProsody = graphemes.length > 0 && (prosody.stress_rule !== "none" || prosody.diphthongs || prosody.onsets || prosody.show_syllables || report.stressPositions.length);
+    const syllables = hasProsody && report.transcribed
+        ? `<section class="chart-card">
+        <h2>Syllables and stress</h2>
+        <ul class="plain-list">
+            <li>Stress falls on ${esc(STRESS_RULE_TEXT[prosody.stress_rule] || "")}${prosody.stress_rule !== "none" ? ", unless the spelling marks it" : ""}.</li>
+            ${prosody.diphthongs ? `<li>Diphthongs: ${prosody.diphthongs.split(" ").map((d) => `<span class="ipa">${esc(d)}</span>`).join(" ")}</li>` : ""}
+            ${prosody.onsets ? `<li>Consonant clusters that can begin a syllable: ${prosody.onsets.split(" ").map((d) => `<span class="ipa">${esc(d)}</span>`).join(" ")}</li>` : ""}
+            ${prosody.max_coda !== null ? `<li>A syllable can end in at most ${prosody.max_coda === 0 ? "no consonants (open syllables)" : `${prosody.max_coda} consonant${prosody.max_coda === 1 ? "" : "s"}`}.</li>` : ""}
+        </ul>
+        <div class="two-up">
+            <div><h3>Syllable shapes</h3>${charts.barList(report.syllableShapes.map((s) => ({ label: s.shape, count: s.count })))}</div>
+            <div><h3>Syllables per word</h3>${charts.barList(report.syllableCounts.map((s) => ({ label: `${s.syllables} syllable${s.syllables === 1 ? "" : "s"}`, count: s.count })))}</div>
+            ${report.stressPositions.length ? `<div><h3>Where stress falls</h3>${charts.barList(report.stressPositions.map((s) => ({ label: s.label, count: s.count })))}</div>` : ""}
+        </div>
+    </section>`
+        : "";
+
     const used = report.phonemeStats.filter((p) => p.count > 0);
     const frequency = used.length
         ? `<section class="chart-card">
@@ -905,13 +967,19 @@ function phonologyPage(res, language) {
     <div class="stat-tiles">
         ${tile("Consonants", consonants.length)}
         ${tile("Vowels", vowels.length)}
+        ${tones.length ? tile("Tones", tones.length) : ""}
         ${graphemes.length ? tile("Letters and letter groups", graphemes.length) : ""}
         ${report.totalPhonemes ? tile("Consonant : vowel", ratioText(report.consonants, report.vowels), "by sounds, from the spelling") : ""}
     </div>
     ${consonants.length ? `<section class="chart-card"><h2>Consonants</h2>${consonantChart(consonants)}</section>` : ""}
     ${vowels.length ? `<section class="chart-card"><h2>Vowels</h2>${vowelChart(vowels)}</section>` : ""}
     ${unplaced.length ? `<section class="chart-card"><h2>Other sounds</h2><p>${unplaced.map((p) => ipa(p.ipa)).join(" ")}</p></section>` : ""}
+    ${tones.length || stresses.length
+        ? `<section class="chart-card"><h2>${tones.length ? "Tones" : ""}${tones.length && stresses.length ? " and " : ""}${stresses.length ? (tones.length ? "stress" : "Stress") : ""}</h2>
+        <ul class="prosody-list">${[...tones, ...stresses].map((p) => `<li>${ipa(p.ipa)} <span class="muted">${esc(p.label || p.kind)}</span></li>`).join("")}</ul></section>`
+        : ""}
     ${spelling}
+    ${syllables}
     ${coverage}
     ${frequency}
     <p class="muted"><a href="/dictionary/correspondences">Sound correspondences between related languages →</a></p>

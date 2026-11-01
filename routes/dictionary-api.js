@@ -81,7 +81,7 @@ module.exports = async function dictionaryApi(req, res, url) {
     // GET|PUT /phonology/<language id>   { phonemes: [...], graphemes: [...] }
     // GET /transcribe?language=<id>&q=<headword>   the headword's sounds, from the spelling
     if (resource === "ipa" && parts.length === 1 && method === "GET") {
-        sendJson(res, 200, CHART);
+        sendJson(res, 200, { ...CHART, classes: phonology.CLASS_NAMES });
         return true;
     }
 
@@ -100,11 +100,19 @@ module.exports = async function dictionaryApi(req, res, url) {
         }
     }
 
+    // POST /phonology-preview  { data: <what PUT /phonology takes>, word }  reads a word with unsaved settings
+    if (resource === "phonology-preview" && parts.length === 1 && method === "POST") {
+        const body = await readJson(req);
+        const result = phonology.preview(body && body.data, String((body && body.word) || ""));
+        sendJson(res, 200, { ipa: result.surface, phonemes: result.phonemes, unknown: result.unknown, units: result.units });
+        return true;
+    }
+
     if (resource === "transcribe" && parts.length === 1 && method === "GET") {
         const id = parseInteger(params.get("language"), "language");
         const result = phonology.transcribe(id, params.get("q") || "");
         sendJson(res, 200, {
-            ipa: result.complete ? phonology.slashed(result.phonemes) : null,
+            ipa: result.surface,
             unknown: result.unknown,
             hasSpelling: phonology.hasOrthography(id)
         });

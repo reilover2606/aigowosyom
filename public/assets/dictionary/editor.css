@@ -514,3 +514,54 @@ dialog.phonology-dialog {
 .spell-status.bad {
     color: var(--danger, #b3261e);
 }
+
+.prosody-keys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 6px 0;
+}
+
+.ipa-key.wide {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 5.2em;
+    line-height: 1.1;
+}
+
+.ipa-key.wide small {
+    font-family: inherit;
+    font-size: 0.55em;
+}
+
+.spelling-edit select,
+.spelling-edit input {
+    font-size: 0.9em;
+}
+
+.spelling-edit .row-tools {
+    white-space: nowrap;
+}
+
+.ipa-small {
+    font-size: 0.85em;
+    color: var(--muted, #54595d);
+}
+
+.try-box {
+    border-top: 1px solid var(--border, #c8ccd1);
+    padding-top: 10px;
+    margin-top: 14px;
+}
+
+.try-result {
+    font-family: "Charis SIL", "Doulos SIL", "Gentium Plus", "Noto Serif", "DejaVu Serif", "Times New Roman", serif;
+    font-size: 1.3rem;
+    margin-left: 12px;
+}
+
+.try-result.bad {
+    color: var(--danger, #b3261e);
+    font-size: 1rem;
+}
