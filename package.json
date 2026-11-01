@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "rebuild": "npm rebuild better-sqlite3",
-    "test": "node test/polygons.js && node test/autocomplete.js && node test/phonology.js && node test/sound-laws.js"
+    "test": "node test/polygons.js && node test/autocomplete.js && node test/phonology.js && node test/sound-laws.js && node test/inflection.js"
   },
   "engines": {
     "node": ">=20"

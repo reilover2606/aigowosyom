@@ -6,6 +6,7 @@ const dict = require("../lib/dictionary");
 const lore = require("../lib/lore");
 const eras = require("../lib/eras");
 const phonology = require("../lib/phonology");
+const inflection = require("../lib/inflection");
 const { CHART } = require("../lib/ipa");
 const { HttpError, sendJson, readJson, parseInteger } = require("../lib/http");
 
@@ -70,6 +71,34 @@ module.exports = async function dictionaryApi(req, res, url) {
 
             if (method === "DELETE") {
                 dict.deleteLanguage(id);
+                sendJson(res, 200, { ok: true });
+                return true;
+            }
+        }
+    }
+
+    // ---- Inflection templates (paradigms) ----
+    // GET  /inflection-templates?language=<id>          a language's templates (with how many words use each)
+    // POST /inflection-templates   { language_id, ...template }
+    // PUT|DELETE /inflection-templates/<id>
+    if (resource === "inflection-templates") {
+        if (parts.length === 1 && method === "GET") {
+            sendJson(res, 200, inflection.listTemplates(parseInteger(params.get("language"), "language")));
+            return true;
+        }
+        if (parts.length === 1 && method === "POST") {
+            const data = await readJson(req);
+            sendJson(res, 201, inflection.createTemplate(parseInteger(data && data.language_id, "language"), data));
+            return true;
+        }
+        if (parts.length === 2) {
+            const id = parseInteger(rawId, "id");
+            if (method === "PUT") {
+                sendJson(res, 200, inflection.updateTemplate(id, await readJson(req)));
+                return true;
+            }
+            if (method === "DELETE") {
+                inflection.deleteTemplate(id);
                 sendJson(res, 200, { ok: true });
                 return true;
             }

@@ -32,6 +32,7 @@ const phonology = require("../lib/phonology");
 const { CHART } = require("../lib/ipa");
 const correspondences = require("../lib/correspondences");
 const lingrex = require("../lib/lingrex");
+const inflection = require("../lib/inflection");
 
 const PAGE_SIZE = 200;
 const SEARCH_LIMIT = 100;
@@ -243,7 +244,7 @@ function languageShell(language, activeTab, content) {
 
     return layout({
         title: `${language.name}${
-            { stats: " statistics", sounds: " sound patterns", phonology: " phonology" }[activeTab] || ""
+            { stats: " statistics", sounds: " sound patterns", phonology: " phonology", inflection: " inflection" }[activeTab] || ""
         } – Dictionary`,
         search: { q: "" },
         body: `<main class="content language-page" style="${langVars(language.display_color, language.ink)}">
@@ -257,6 +258,7 @@ function languageShell(language, activeTab, content) {
         <a href="${base}?view=stats"${activeTab === "stats" ? ' class="active" aria-current="page"' : ""}>Statistics</a>
         <a href="${base}?view=sounds"${activeTab === "sounds" ? ' class="active" aria-current="page"' : ""}>Sound patterns</a>
         <a href="${base}?view=phonology"${activeTab === "phonology" ? ' class="active" aria-current="page"' : ""}>Phonology</a>
+        <a href="${base}?view=inflection"${activeTab === "inflection" ? ' class="active" aria-current="page"' : ""}>Inflection</a>
         <a class="tab-aside" href="/dictionary/family">Family tree</a>
     </nav>
     ${content}
@@ -502,6 +504,78 @@ function statsPage(res, language) {
     sendHtml(res, 200, languageShell(language, "stats", html));
 }
 
+// ---- inflection tables ----
+
+// A template's layout as HTML: category values down the side (nested, a header cell spanning the rows it
+// covers) and across the top. `cell(key)` gives the HTML for the cell at a key; "own" marks a word's own
+// form. `paths` of the template's rows and columns give the order.
+function inflectionTableHtml(template, cell) {
+    const rowPaths = inflection.paths(template.rows);
+    const colPaths = inflection.paths(template.cols);
+    const R = template.rows.length;
+    const C = template.cols.length;
+
+    // How many leaf rows/columns each level's header cell covers.
+    const span = (dims, level) => dims.slice(level + 1).reduce((n, dim) => n * dim.values.length, 1);
+
+    let head = "";
+    if (C === 0) {
+        head = `<tr>${R ? template.rows.map((d) => `<th class="axis" scope="col">${esc(d.name)}</th>`).join("") : ""}<th scope="col">Form</th></tr>`;
+    } else {
+        const corner = R ? esc(template.rows.map((d) => d.name).join(" / ")) : "";
+        for (let level = 0; level < C; level++) {
+            const headers = colPaths
+                .filter((path) => path.slice(level + 1).every((i) => i === 0))
+                .map((path) => `<th scope="col" colspan="${span(template.cols, level)}">${esc(template.cols[level].values[path[level]])}</th>`);
+            head += `<tr>${level === 0 && R ? `<th class="corner" rowspan="${C}" colspan="${R}">${corner}</th>` : ""}${headers.join("")}</tr>`;
+        }
+    }
+
+    let body = "";
+    rowPaths.forEach((row) => {
+        const heads = template.rows
+            .map((dim, level) => (row.slice(level + 1).every((i) => i === 0)
+                ? `<th scope="row" rowspan="${span(template.rows, level)}">${esc(dim.values[row[level]])}</th>`
+                : ""))
+            .join("");
+        const cells = (colPaths.length ? colPaths : [[]]).map((col) => cell(inflection.cellKey(row, col))).join("");
+        body += `<tr>${heads}${cells}</tr>`;
+    });
+
+    const names = [
+        R ? `Rows: ${template.rows.map((d) => d.name).join(", ")}` : "",
+        C ? `Columns: ${template.cols.map((d) => d.name).join(", ")}` : ""
+    ].filter(Boolean).join(" · ");
+
+    return `<div class="inflection-scroll"><table class="inflection-table">
+        ${names ? `<caption>${esc(names)}</caption>` : ""}
+        <thead>${head}</thead>
+        <tbody>${body}</tbody>
+    </table></div>`;
+}
+
+// One word's table, with the forms (and their pronunciation when the language has a spelling).
+function wordInflectionHtml(entry, word, language, headingTag) {
+    const template = entry.template;
+    if (!template) {
+        return "";
+    }
+    const table = inflection.tableFor(template, { headword: word.headword, stem: entry.stem, overrides: entry.overrides });
+    const forms = new Map(table.rows.flatMap((row) => row.cells.map((c) => [c.key, c])));
+    const html = inflectionTableHtml(template, (key) => {
+        const c = forms.get(key) || { form: null, source: null };
+        if (!c.form) {
+            return `<td class="none">${c.source ? '<span class="muted">—</span>' : ""}</td>`;
+        }
+        const spoken = phonology.hasOrthography(language.id) ? phonology.transcribe(language.id, c.form) : null;
+        return `<td class="${c.source === "own" ? "own" : ""}"><span class="conlang" lang="${esc(language.slug)}">${esc(c.form)}</span>${
+            spoken && spoken.complete ? `<span class="ipa form-ipa">${esc(spoken.surface)}</span>` : ""
+        }</td>`;
+    });
+    return `<${headingTag}>${esc(template.name)}${template.pos ? ` <span class="muted">(${esc(template.pos)})</span>` : ""}</${headingTag}>
+        ${template.description ? `<p class="muted">${esc(template.description)}</p>` : ""}${html}`;
+}
+
 function renderEntry(word, language, index, multiple) {
     // With several homographs, each gets "Etymology N" and everything
     // below it drops one heading level.
@@ -568,6 +642,11 @@ function renderEntry(word, language, index, multiple) {
     sections.push(
         `<${innerTag}>${esc(capitalize(word.pos || "Entry"))}</${innerTag}>${headwordLine}${senses}`
     );
+
+    // Inflection tables the word follows.
+    for (const entry of word.inflections || []) {
+        sections.push(wordInflectionHtml(entry, word, language, innerTag));
+    }
 
     if (word.variantOf.length) {
         sections.push(
@@ -1167,6 +1246,50 @@ async function correspondencesPage(res, params) {
     );
 }
 
+// ---- a language's inflection templates ----
+
+// The pattern with the stem shown as a dash: "{stem}ana" is "–ana".
+const patternText = (pattern) => esc(pattern).replace(/\{stem\}/g, "<span class=\"stem\">–</span>").replace(/\{headword\}/g, "<span class=\"stem\">word</span>");
+
+function inflectionPage(res, language) {
+    const templates = inflection.listTemplates(language.id);
+
+    if (!templates.length) {
+        sendHtml(res, 200, languageShell(language, "inflection", `<p class="muted">No inflection templates have been defined for this language yet.${
+            ifEditing(' Open it in the <a href="/dictionary/editor">editor</a> and choose <em>Inflection templates</em>.')}</p>`));
+        return;
+    }
+
+    const groups = new Map();
+    for (const template of templates) {
+        const key = template.pos || "other";
+        if (!groups.has(key)) {
+            groups.set(key, []);
+        }
+        groups.get(key).push(template);
+    }
+
+    const sections = [...groups].map(([pos, list]) => `<h2>${esc(capitalize(pos))}</h2>${list.map((template) => {
+        const users = inflection.wordsUsing(template.id, 30);
+        const table = inflectionTableHtml(template, (key) => {
+            const pattern = template.cells[key];
+            return pattern ? `<td><span class="conlang">${patternText(pattern)}</span></td>` : '<td class="none"></td>';
+        });
+        return `<section class="chart-card inflection-card">
+            <h3>${esc(template.name)}</h3>
+            ${template.description ? `<p class="muted">${esc(template.description)}</p>` : ""}
+            ${template.stem_remove ? `<p class="muted">The stem is the headword without <span class="conlang">${esc(template.stem_remove)}</span>; a dash stands for it in the patterns below.</p>` : '<p class="muted">A dash stands for the stem in the patterns below.</p>'}
+            ${table}
+            <p class="muted">${template.words ? `${template.words} word${template.words === 1 ? "" : "s"} follow${template.words === 1 ? "s" : ""} this pattern: ${users.map((w) => `<a class="conlang" href="${entryUrl(language.slug, w.headword)}">${esc(w.headword)}</a>`).join(", ")}${template.words > users.length ? ", …" : ""}` : "No words follow this pattern yet."}</p>
+        </section>`;
+    }).join("")}`).join("");
+
+    sendHtml(res, 200, languageShell(language, "inflection", `<div class="viz">
+    <p class="muted">Each template is a pattern of forms along categories (rows and columns); a word follows one or more of them, with its own stem and, where it is irregular, its own forms.</p>
+    ${sections}
+</div>`));
+}
+
 function editorPage(res) {
     sendHtml(
         res,
@@ -1280,6 +1403,8 @@ module.exports = async function dictionaryPages(req, res, url) {
             soundsPage(res, language, url.searchParams);
         } else if (url.searchParams.get("view") === "phonology") {
             phonologyPage(res, language);
+        } else if (url.searchParams.get("view") === "inflection") {
+            inflectionPage(res, language);
         } else {
             languagePage(res, language, url.searchParams);
         }

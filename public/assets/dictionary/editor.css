@@ -572,3 +572,128 @@ dialog.phonology-dialog {
     gap: 6px;
     margin: 6px 0;
 }
+
+/* ---- Inflection templates and tables ---- */
+
+dialog.templates-dialog {
+    width: min(1180px, 97vw);
+    max-height: 94vh;
+    overflow-y: auto;
+}
+
+.templates-layout {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.template-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.template-list button {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    gap: 2px;
+}
+
+.template-list button small {
+    font-size: 0.75em;
+    color: var(--muted, #54595d);
+}
+
+.template-list button.active {
+    border-color: var(--accent, #4a7c59);
+    box-shadow: inset 3px 0 0 var(--accent, #4a7c59);
+}
+
+.axes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+    margin: 10px 0;
+}
+
+.axis-editor h4 {
+    margin: 0 0 6px;
+}
+
+.dimension {
+    border: 1px solid var(--border, #c8ccd1);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+}
+
+.dimension .values {
+    margin: 6px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.value-row {
+    display: flex;
+    gap: 3px;
+}
+
+.template-grid .inflection-table td,
+.inflection-entry .inflection-table td {
+    padding: 2px 4px;
+}
+
+.cell-input {
+    width: 100%;
+    min-width: 7em;
+    box-sizing: border-box;
+}
+
+.cell-input.own {
+    font-weight: bold;
+    border-color: var(--accent, #4a7c59);
+}
+
+.inflection-scroll {
+    overflow-x: auto;
+    margin: 6px 0;
+}
+
+.inflection-table {
+    border-collapse: collapse;
+}
+
+.inflection-table th,
+.inflection-table td {
+    border: 1px solid var(--border, #c8ccd1);
+    font-weight: normal;
+    font-size: 0.9em;
+    padding: 3px 8px;
+}
+
+.inflection-table th {
+    background: var(--panel-muted, rgba(0, 0, 0, 0.05));
+    text-align: center;
+}
+
+.inflection-table th[scope="row"] {
+    text-align: left;
+    white-space: nowrap;
+}
+
+.inflection-table th.corner,
+.inflection-table th.axis {
+    color: var(--muted, #54595d);
+    font-size: 0.8em;
+}
+
+.inflection-entry {
+    border: 1px solid var(--border, #c8ccd1);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+}
