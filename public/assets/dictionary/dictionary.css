@@ -1145,3 +1145,10 @@ button.danger {
 .correspondence-table .route .mid {
     font-style: italic;
 }
+
+.flow-swap { fill: var(--series-4, #eda100); }
+.flow-key-swap::before { background: var(--series-4, #eda100); }
+
+.shape-table tr.shorter td { background: rgba(42, 120, 214, 0.08); }
+.shape-table tr.longer td { background: rgba(27, 175, 122, 0.1); }
+.two-up h4 { margin: 8px 0 4px; font-size: 0.95em; }

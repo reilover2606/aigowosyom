@@ -264,4 +264,40 @@ check("a sound with two outcomes is explained by what is next to it", () => {
     assert.ok(flow.route && flow.route[0] === "k" && flow.route[flow.route.length - 1] === "t͡ʃ", "a route of intermediate sounds is offered");
 });
 
+check("diphthongs are single sounds, whole syllables that go are one event, and swapped sounds are a metathesis", () => {
+    const a = dict.createLanguage({ slug: "dip-a", name: "DipA" });
+    const b = dict.createLanguage({ slug: "dip-b", name: "DipB" });
+    const inv = (list, diphthongs) => ({
+        phonemes: list.map((ipa) => ({ ipa })),
+        graphemes: list.map((x) => ({ grapheme: x, ipa: x })),
+        prosody: { diphthongs, show_syllables: true }
+    });
+    phon.savePhonology(a.id, inv(["k", "t", "s", "n", "r", "a", "e", "i", "u", "o"], "ai au"));
+    phon.savePhonology(b.id, inv(["k", "t", "s", "n", "r", "a", "e", "i", "u", "o"], ""));
+    const word = (languageId, headword, ancestorIds = []) => dict.saveWord(null, languageId, {
+        headword, senses: ["x"], ancestors: ancestorIds.map((id) => ({ id, kind: "inherited" }))
+    });
+    const pairs = [["kaita", "keta"], ["kausa", "kosa"], ["kasana", "kasa"], ["tukana", "tuka"], ["kartu", "katru"]];
+    for (const [old, young] of pairs) {
+        word(b.id, young, [word(a.id, old)]);
+    }
+    const result = correspond(a.id, b.id);
+    const find = (from, to) => result.flows.find((f) => f.from === from && f.to === to);
+
+    const mono = find("ai", "e");
+    assert.ok(mono, "ai > e is one correspondence, not a lost vowel beside a changed one");
+    assert.ok(mono.processes[0].startsWith("monophthongization"), mono.processes[0]);
+    assert.ok(find("au", "o"));
+    assert.ok(!result.flows.some((f) => f.processes.some((p) => p.includes("syncope")) ), "no vowel is reported lost");
+
+    const lost = find("na", "∅");
+    assert.ok(lost && lost.count === 2, "the lost suffix is one event");
+    assert.ok(lost.processes[0].startsWith("loss of a final syllable"));
+    assert.deepStrictEqual(result.shape.lostSyllables.map((x) => [x.position, x.text, x.count]), [["final", "na", 2]]);
+    assert.strictEqual(result.shape.shorter, 2, "only the two suffix words got shorter by a syllable");
+
+    const swap = find("rt", "tr");
+    assert.ok(swap && swap.processes[0].startsWith("metathesis"));
+});
+
 console.log(`\n${passed} checks passed`);

@@ -993,6 +993,44 @@ function phonologyPage(res, language) {
 
 // The optional LingRex analysis (needs Python with the lingrex package; see lib/lingrex.js). It only
 // runs in the editor, when asked for.
+// The words' number of syllables before and after, and why they got shorter or longer.
+function wordShapeHtml(shape, chosen) {
+    if (!shape || !shape.pairs) {
+        return "";
+    }
+    const list = (items, describe) => items.map((x) => `<li>${describe(x)}</li>`).join("");
+    const examples = (x) => x.examples.map((e) => `<span class="conlang">${esc(e.from)}</span> → <span class="conlang">${esc(e.to)}</span>`).join("; ");
+    const place = { initial: "at the start", medial: "in the middle", final: "at the end" };
+
+    const table = shape.crosstab.length
+        ? `<table class="relations shape-table">
+            <thead><tr><th>${esc(chosen.from.name)} syllables</th><th>${esc(chosen.to.name)} syllables</th><th>Words</th></tr></thead>
+            <tbody>${shape.crosstab.map((c) => `<tr class="${c.from === c.to ? "" : c.to < c.from ? "shorter" : "longer"}"><td class="num">${c.from}</td><td class="num">${c.to}</td><td class="num">${c.count}</td></tr>`).join("")}</tbody>
+        </table>`
+        : "";
+
+    return `<h3>Word length</h3>
+        <p class="muted">${shape.same} of ${shape.pairs} words kept their number of syllables, ${shape.shorter} got shorter and ${shape.longer} got longer.
+            Syllables are counted from each language's spelling and syllable settings (diphthongs count as one).</p>
+        <div class="two-up">
+            <div>${table}</div>
+            <div>
+                ${shape.lostSyllables.length
+                    ? `<h4>Whole syllables lost</h4><ul class="plain-list">${list(shape.lostSyllables, (x) => `<strong class="conlang">${x.position === "final" ? "-" : ""}${esc(x.text)}${x.position === "initial" ? "-" : ""}</strong> ${place[x.position]} of the word, ${x.count} time${x.count === 1 ? "" : "s"} (${examples(x)})`)}</ul>`
+                    : ""}
+                ${shape.gainedSyllables.length
+                    ? `<h4>Whole syllables gained</h4><ul class="plain-list">${list(shape.gainedSyllables, (x) => `<strong class="conlang">${x.position === "final" ? "-" : ""}${esc(x.text)}${x.position === "initial" ? "-" : ""}</strong> ${place[x.position]} of the word, ${x.count} time${x.count === 1 ? "" : "s"} (${examples(x)})`)}</ul>`
+                    : ""}
+                ${shape.whyShorter.length
+                    ? `<h4>Why words got shorter</h4><ul class="plain-list">${list(shape.whyShorter, (x) => `${esc(x.cause)}: ${x.count} word${x.count === 1 ? "" : "s"} (${examples(x)})`)}</ul>`
+                    : ""}
+                ${shape.whyLonger.length
+                    ? `<h4>Why words got longer</h4><ul class="plain-list">${list(shape.whyLonger, (x) => `${esc(x.cause)}: ${x.count} word${x.count === 1 ? "" : "s"} (${examples(x)})`)}</ul>`
+                    : ""}
+            </div>
+        </div>`;
+}
+
 async function lingrexBlock(chosen, result, wanted) {
     if (!ifEditing("x")) {
         return "";
@@ -1079,7 +1117,7 @@ async function correspondencesPage(res, params) {
         }).join("");
 
         const conditionRows = result.conditions.map((c) => {
-            const where = c.edge ? `at ${esc(c.what)}` : c.side === "left" ? `after ${esc(c.what)}` : `before ${esc(c.what)}`;
+            const where = c.side === "both" ? esc(c.what) : c.edge ? `at ${esc(c.what)}` : c.side === "left" ? `after ${esc(c.what)}` : `before ${esc(c.what)}`;
             const rest = c.elsewhere ? `; elsewhere ${ipa(c.from)} ${c.elsewhere.to === c.from ? "stays" : `becomes ${ipa(c.elsewhere.to)}`} (${c.elsewhere.count} of ${c.elsewhere.of})` : "";
             const caution = c.exceptions ? ` <span class="muted">(${c.exceptions} exception${c.exceptions === 1 ? "" : "s"})</span>` : "";
             return `<li>${ipa(c.from)} → ${ipa(c.to)} ${where}: ${c.hits} of ${c.of}${rest}.${caution}</li>`;
@@ -1100,6 +1138,7 @@ async function correspondencesPage(res, params) {
         <p class="muted">Where a sound has more than one outcome, the neighbouring sound (or kind of sound) in the ancestor word that best tells them apart. With few words, treat these as leads to check, not findings.</p>
         <ul class="condition-list">${conditionRows}</ul>`
             : ""}
+        ${wordShapeHtml(result.shape, chosen)}
         <h3>Every correspondence</h3>
         <div class="chart-scroll"><table class="relations correspondence-table">
             <thead><tr><th>${esc(chosen.from.name)}</th><th></th><th>${esc(chosen.to.name)}</th><th>Times</th><th>Of that sound</th><th>What it looks like</th><th>Examples</th></tr></thead>
