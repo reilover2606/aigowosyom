@@ -1123,3 +1123,25 @@ button.danger {
     font-size: 1em;
     margin: 6px 0;
 }
+
+.flow-merge { fill: var(--series-5, #e87ba4); }
+.flow-split { fill: var(--series-7, #6250d6); }
+.flow-key-merge::before { background: var(--series-5, #e87ba4); }
+.flow-key-split::before { background: var(--series-7, #6250d6); }
+
+.condition-list {
+    padding-left: 1.2em;
+}
+
+.condition-list li {
+    margin: 4px 0;
+}
+
+.correspondence-table .route {
+    font-size: 0.9em;
+    color: var(--muted, #54595d);
+}
+
+.correspondence-table .route .mid {
+    font-style: italic;
+}
