@@ -12,6 +12,7 @@ const assert = require("node:assert");
 const dict = require("../lib/dictionary");
 const phon = require("../lib/phonology");
 const { correspond, align, GAP } = require("../lib/correspondences");
+const soundchange = require("../lib/soundchange");
 
 let passed = 0;
 const check = (name, fn) => {
@@ -174,10 +175,38 @@ check("syllabic consonants carry a syllable when no vowel is next to them", () =
     assert.deepStrictEqual(phon.transcribe(lang.id, "vlk").syllables.length, 1);
 });
 
-check("alignment lines up like sounds and marks losses and gains", () => {
-    assert.deepStrictEqual(align(["k", "a", "t"], ["k", "a", "t"]), [["k", "k"], ["a", "a"], ["t", "t"]]);
-    assert.deepStrictEqual(align(["k", "a", "t", "a"], ["g", "a", "t"]), [["k", "g"], ["a", "a"], ["t", "t"], ["a", GAP]]);
-    assert.deepStrictEqual(align(["s", "k", "a"], ["k", "a"]), [["s", GAP], ["k", "k"], ["a", "a"]]);
+const cols = (columns) => columns.map((c) => [c.from.join(""), c.to.join("")]);
+
+check("alignment lines up like sounds, marks losses and gains, and can merge or split sounds", () => {
+    assert.deepStrictEqual(cols(align(["k", "a", "t"], ["k", "a", "t"])), [["k", "k"], ["a", "a"], ["t", "t"]]);
+    assert.deepStrictEqual(cols(align(["k", "a", "t", "a"], ["ɡ", "a", "t"])), [["k", "ɡ"], ["a", "a"], ["t", "t"], ["a", ""]]);
+    assert.deepStrictEqual(cols(align(["s", "k", "a"], ["k", "a"])), [["s", ""], ["k", "k"], ["a", "a"]]);
+    // m + p > b: one sound from two (voicing from the nasal, stop manner from the plosive), not "m > b, p lost"
+    assert.deepStrictEqual(cols(align(["a", "m", "p", "a"], ["a", "b", "a"])), [["a", "a"], ["mp", "b"], ["a", "a"]]);
+    // and the other way: one sound becoming two
+    assert.deepStrictEqual(cols(align(["a", "b", "a"], ["a", "m", "p", "a"])), [["a", "a"], ["b", "mp"], ["a", "a"]]);
+    // a sound that just disappears next to an unrelated one is still a loss, not a merger
+    assert.deepStrictEqual(cols(align(["a", "t", "s", "a"], ["a", "t", "a"])).filter(([f, t]) => f !== t), [["s", ""]]);
+});
+
+check("changes are named from the features that differ and the neighbours", () => {
+    const named = (from, to, left, right) => soundchange.classify(from, to, { left, right }).processes;
+    assert.deepStrictEqual(named(["p"], ["b"], "a", "a"), ["intervocalic voicing"]);
+    assert.deepStrictEqual(named(["t"], ["d"], "n", "a"), ["voicing assimilation (to the preceding sound)"]);
+    assert.deepStrictEqual(named(["b"], ["β"], "a", "a"), ["spirantization (lenition)"]);
+    assert.deepStrictEqual(named(["s"], [], "a", "#"), ["loss of a final consonant"]);
+    assert.deepStrictEqual(named(["a"], [], "k", "t"), ["syncope (loss of a medial vowel)"]);
+    assert.deepStrictEqual(named([], ["ə"], "k", "t"), ["epenthesis (a vowel appears)"]);
+    assert.deepStrictEqual(named(["k"], ["t͡ʃ"], "#", "i"), ["affrication", "palatalization"]);
+    assert.deepStrictEqual(named(["e"], ["i"], "k", "t"), ["raising"]);
+    assert.ok(named(["m", "p"], ["b"], "a", "a")[0].startsWith("coalescence (nasal + stop): manner from p, voicing from m"));
+    assert.deepStrictEqual(named(["a"], ["aː"], "k", "t"), ["lengthening"]);
+});
+
+check("a route of one-feature steps through sounds that exist", () => {
+    assert.deepStrictEqual(soundchange.routeBetween("p", "v", new Set(["b", "β"])), ["p", "b", "β", "v"]);
+    assert.strictEqual(soundchange.routeBetween("p", "b"), null, "one step needs no route");
+    assert.strictEqual(soundchange.routeBetween("p", "§"), null);
 });
 
 check("correspondences between a language and its descendant are counted", () => {
@@ -205,6 +234,34 @@ check("correspondences between a language and its descendant are counted", () =>
     assert.strictEqual(kg.count, 3);
     assert.strictEqual(result.flows.find((f) => f.from === "t" && f.to === "t").count, 2);
     assert.ok(!result.flows.some((f) => f.from === "k" && f.to === "k"), "k always became g");
+});
+
+check("a sound with two outcomes is explained by what is next to it", () => {
+    const a = dict.createLanguage({ slug: "cond-a", name: "CondA" });
+    const b = dict.createLanguage({ slug: "cond-b", name: "CondB" });
+    const letters = (list, extra = []) => ({
+        phonemes: list.map((ipa) => ({ ipa })),
+        graphemes: [...list.map((x) => ({ grapheme: x, ipa: x })), ...extra]
+    });
+    phon.savePhonology(a.id, letters(["k", "t", "i", "e", "u", "o"]));
+    phon.savePhonology(b.id, letters(["k", "t", "t͡ʃ", "i", "e", "u", "o"], [{ grapheme: "c", ipa: "t͡ʃ" }]));
+    const word = (languageId, headword, ancestorIds = []) => dict.saveWord(null, languageId, {
+        headword, senses: ["x"], ancestors: ancestorIds.map((id) => ({ id, kind: "inherited" }))
+    });
+    for (const [old, young] of [["kiti", "citi"], ["keti", "ceti"], ["kitu", "citu"], ["kuti", "kuti"], ["koti", "koti"], ["kuku", "kuku"]]) {
+        word(b.id, young, [word(a.id, old)]);
+    }
+    const result = correspond(a.id, b.id);
+    const found = result.conditions.find((c) => c.from === "k" && c.to === "t͡ʃ");
+    assert.ok(found, "k > tʃ is conditioned");
+    assert.strictEqual(found.side, "right");
+    assert.strictEqual(found.what, "a front vowel");
+    assert.deepStrictEqual([found.hits, found.of, found.exceptions], [3, 3, 0]);
+    assert.ok(!result.conditions.some((c) => c.what === "/i/"), "the class explains it better than one vowel");
+    assert.deepStrictEqual(found.elsewhere && found.elsewhere.to, "k");
+    const flow = result.flows.find((f) => f.from === "k" && f.to === "t͡ʃ");
+    assert.deepStrictEqual(flow.processes, ["affrication", "palatalization"]);
+    assert.ok(flow.route && flow.route[0] === "k" && flow.route[flow.route.length - 1] === "t͡ʃ", "a route of intermediate sounds is offered");
 });
 
 console.log(`\n${passed} checks passed`);

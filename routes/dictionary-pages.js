@@ -31,6 +31,7 @@ const { soundPatterns, EDGE } = require("../lib/sounds");
 const phonology = require("../lib/phonology");
 const { CHART } = require("../lib/ipa");
 const correspondences = require("../lib/correspondences");
+const lingrex = require("../lib/lingrex");
 
 const PAGE_SIZE = 200;
 const SEARCH_LIMIT = 100;
@@ -990,7 +991,44 @@ function phonologyPage(res, language) {
 
 // ---- Sound correspondences between a language and its descendant ----
 
-function correspondencesPage(res, params) {
+// The optional LingRex analysis (needs Python with the lingrex package; see lib/lingrex.js). It only
+// runs in the editor, when asked for.
+async function lingrexBlock(chosen, result, wanted) {
+    if (!ifEditing("x")) {
+        return "";
+    }
+    const base = `/dictionary/correspondences?from=${encodeURIComponent(chosen.from.slug)}&amp;to=${encodeURIComponent(chosen.to.slug)}`;
+    const intro = `<h3>A second opinion from LingRex</h3>
+        <p class="muted"><a href="https://github.com/lingpy/lingrex">LingRex</a> (List 2019) takes a different view of the same word pairs: it groups sound positions that behave alike into
+        <em>correspondence patterns</em> by where in the word they fall (initial, medial or final consonant, vowel), and treats a pattern backed by only one cognate set as irregular.
+        Use it as a check on which correspondences the data supports more than once. It needs Python with the <code>lingrex</code> package.</p>`;
+    if (!wanted) {
+        return `${intro}<p><a class="button-link secondary" href="${base}&amp;lingrex=1#lingrex">Run LingRex on these words</a></p>`;
+    }
+
+    const outcome = await lingrex.analyze(result, { from: chosen.from.name, to: chosen.to.name });
+    if (outcome.error) {
+        return `<div id="lingrex">${intro}<p class="status error">${esc(outcome.error)}</p></div>`;
+    }
+    const rows = outcome.patterns.map((p) => `<tr class="${p.regular ? "" : "single"}">
+        <td>${ipa(p.ancestor)}</td><td class="arrow">→</td><td>${ipa(p.descendant)}</td>
+        <td class="num">${p.support}</td>
+        <td>${p.positions.map((x) => `${esc(x.position)} (${x.support})`).join("; ")}</td>
+        <td>${p.regular ? "regular" : p.variantOf ? `irregular: elsewhere ${ipa(p.variantOf.ancestor)} → ${ipa(p.variantOf.descendant)}` : "single occurrence"}</td>
+        <td>${p.cognates.map((c) => `<span class="conlang">${esc(c)}</span>`).join(", ")}</td>
+    </tr>`).join("");
+    return `<div id="lingrex">${intro}
+        <p class="chart-note">LingRex ${esc(outcome.version || "")} ran on ${result.alignments.length} word pair${result.alignments.length === 1 ? "" : "s"}, using the same lining-up as above.</p>
+        ${outcome.competing.length
+            ? `<p>Position in the word doesn't separate: ${outcome.competing.map((c) => `${ipa(c.ancestor)} → ${c.outcomes.map(ipa).join(" or ")} (${esc(c.position)})`).join("; ")}. Something else, usually a neighbouring sound, decides between them; see the neighbour analysis above.</p>`
+            : ""}
+        <div class="chart-scroll"><table class="relations correspondence-table">
+            <thead><tr><th>${esc(chosen.from.name)}</th><th></th><th>${esc(chosen.to.name)}</th><th>Cognate sets</th><th>Where in the word</th><th>LingRex says</th><th>From</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table></div></div>`;
+}
+
+async function correspondencesPage(res, params) {
     const pairs = correspondences.relatedPairs()
         .map((p) => ({ ...p, from: dict.getLanguage(p.from_id), to: dict.getLanguage(p.to_id) }))
         .filter((p) => p.from && p.to);
@@ -1021,38 +1059,53 @@ function correspondencesPage(res, params) {
 
         const outcomes = new Map();
         for (const f of result.flows) {
-            if (!outcomes.has(f.from)) {
-                outcomes.set(f.from, 0);
-            }
-            outcomes.set(f.from, outcomes.get(f.from) + 1);
+            outcomes.set(f.from, (outcomes.get(f.from) || 0) + 1);
         }
-        const kindLabel = (f) => (f.from === correspondences.GAP ? "gained" : f.to === correspondences.GAP ? "lost" : f.from === f.to ? "unchanged" : "changed");
+        const kindLabel = (f) => ({ gain: "gained", loss: "lost", merge: "two became one", split: "one became two", same: "unchanged", change: "changed" })[correspondences.flowKind(f)];
 
         const rows = result.flows.map((f) => {
             const total = result.fromTotals.get(f.from);
             const share = f.from === correspondences.GAP ? "" : `${Math.round((f.count / total) * 100)}%`;
             const split = f.from !== correspondences.GAP && outcomes.get(f.from) > 1 ? ' <span class="badge small" title="This sound has more than one outcome">split</span>' : "";
             const examples = f.examples.map((e) => `<span class="conlang">${esc(e.from)}</span> → <span class="conlang">${esc(e.to)}</span>`).join("; ");
-            return `<tr class="flow-row flow-${kindLabel(f)}">
+            const named = f.processes.filter((p) => p !== "unchanged");
+            const route = f.route ? `<div class="route">via ${f.route.map((x, i) => `<span class="ipa${i === 0 || i === f.route.length - 1 ? "" : " mid"}">${esc(x)}</span>`).join(" → ")}</div>` : "";
+            return `<tr class="flow-row flow-${correspondences.flowKind(f)}">
                 <td>${ipa(f.from)}</td><td class="arrow">→</td><td>${ipa(f.to)}${split}</td>
-                <td class="num">${f.count}</td><td class="num">${share}</td><td>${kindLabel(f)}</td><td>${examples}</td>
+                <td class="num">${f.count}</td><td class="num">${share}</td>
+                <td>${named.length ? esc(named.join("; ")) : esc(kindLabel(f))}${route}</td>
+                <td>${examples}</td>
             </tr>`;
+        }).join("");
+
+        const conditionRows = result.conditions.map((c) => {
+            const where = c.edge ? `at ${esc(c.what)}` : c.side === "left" ? `after ${esc(c.what)}` : `before ${esc(c.what)}`;
+            const rest = c.elsewhere ? `; elsewhere ${ipa(c.from)} ${c.elsewhere.to === c.from ? "stays" : `becomes ${ipa(c.elsewhere.to)}`} (${c.elsewhere.count} of ${c.elsewhere.of})` : "";
+            const caution = c.exceptions ? ` <span class="muted">(${c.exceptions} exception${c.exceptions === 1 ? "" : "s"})</span>` : "";
+            return `<li>${ipa(c.from)} → ${ipa(c.to)} ${where}: ${c.hits} of ${c.of}${rest}.${caution}</li>`;
         }).join("");
 
         detail = `<h2>${langBadge(chosen.from.name, chosen.from.display_color, chosen.from.ink, languageUrl(chosen.from.slug))} →
             ${langBadge(chosen.to.name, chosen.to.display_color, chosen.to.ink, languageUrl(chosen.to.slug))}</h2>
         <p class="muted">${result.used} linked word pair${result.used === 1 ? "" : "s"} lined up sound by sound.
-            A ribbon's thickness is how often that sound turned into the other; <strong>∅</strong> marks a sound lost on the way down (right) or gained (left).
-            A sound with several outcomes is a <em>split</em>, usually conditioned by the sounds around it: look at its examples.</p>
+            Two sounds can become one (<em>mp</em> → <em>b</em>) or one become two, and a sound can be lost (<strong>∅</strong> on the right) or gained (<strong>∅</strong> on the left).
+            A ribbon's thickness is how often that happened. Each row names the process the features suggest (voicing, lenition, elision, assimilation to a neighbour, ...) and, for a change of several features at once,
+            a route of one-step changes it may have gone through. These are suggestions from the words entered, not a history.</p>
         ${notes.map((n) => `<p class="chart-note">${n}</p>`).join("")}
         ${result.flows.length
-            ? `<div class="flow-key"><span class="flow-key-same">unchanged</span> <span class="flow-key-change">changed</span> <span class="flow-key-loss">lost</span> <span class="flow-key-gain">gained</span></div>
+            ? `<div class="flow-key"><span class="flow-key-same">unchanged</span> <span class="flow-key-change">changed</span> <span class="flow-key-loss">lost</span> <span class="flow-key-gain">gained</span> <span class="flow-key-merge">two became one</span> <span class="flow-key-split">one became two</span></div>
         <div class="flow-scroll">${correspondences.renderFlow(result, names)}</div>
+        ${conditionRows
+            ? `<h3>What the neighbouring sounds suggest</h3>
+        <p class="muted">Where a sound has more than one outcome, the neighbouring sound (or kind of sound) in the ancestor word that best tells them apart. With few words, treat these as leads to check, not findings.</p>
+        <ul class="condition-list">${conditionRows}</ul>`
+            : ""}
         <h3>Every correspondence</h3>
         <div class="chart-scroll"><table class="relations correspondence-table">
-            <thead><tr><th>${esc(chosen.from.name)}</th><th></th><th>${esc(chosen.to.name)}</th><th>Times</th><th>Of that sound</th><th></th><th>Examples</th></tr></thead>
+            <thead><tr><th>${esc(chosen.from.name)}</th><th></th><th>${esc(chosen.to.name)}</th><th>Times</th><th>Of that sound</th><th>What it looks like</th><th>Examples</th></tr></thead>
             <tbody>${rows}</tbody>
-        </table></div>`
+        </table></div>
+        ${await lingrexBlock(chosen, result, params.get("lingrex") === "1")}`
             : '<p class="muted">Nothing to compare yet.</p>'}`;
     }
 
@@ -1156,7 +1209,7 @@ module.exports = async function dictionaryPages(req, res, url) {
     }
 
     if (first === "correspondences" && parts.length === 1) {
-        correspondencesPage(res, url.searchParams);
+        await correspondencesPage(res, url.searchParams);
         return true;
     }
 
