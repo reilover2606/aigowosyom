@@ -1216,11 +1216,14 @@
         }
 
         function customSection() {
-            const custom = draft.phonemes.filter((p) => !onChart.has(p.ipa));
+            const custom = draft.phonemes.filter((p) => !onChart.has(p.ipa) && p.kind !== "tone" && p.kind !== "stress");
             const input = h("input", { type: "text", class: "ipa-input", placeholder: "e.g. kʰ, aː, ã", size: "8", autocomplete: "off" });
             const kind = h("select", {},
                 h("option", { value: "consonant" }, "consonant"),
-                h("option", { value: "vowel" }, "vowel"));
+                h("option", { value: "vowel" }, "vowel"),
+                h("option", { value: "tone" }, "tone"),
+                h("option", { value: "stress" }, "stress mark"));
+            const label = h("input", { type: "text", size: "12", placeholder: "label (e.g. high)", autocomplete: "off" });
             // The marks that go after a symbol (length, aspiration, nasalisation, ...).
             const marks = h("span", { class: "marks" }, ...chart.modifiers.map((m) => h("button", {
                 type: "button",
@@ -1238,7 +1241,8 @@
                 }
                 errorEl.textContent = "";
                 const base = onChart.get(ipa) || onChart.get([...ipa][0]);
-                draft.phonemes.push(base ? { ipa, kind: base.kind } : { ipa, kind: kind.value });
+                const given = label.value.trim();
+                draft.phonemes.push({ ipa, kind: base ? base.kind : kind.value, ...(given ? { label: given } : {}) });
                 render();
             };
             input.addEventListener("keydown", (event) => {
@@ -1251,12 +1255,37 @@
                 h("span", { class: "label" }, "Other sounds",
                     h("span", { class: "hint" }, " — anything not on the charts: long, aspirated or nasal versions, clicks, tones…")),
                 h("div", { class: "chips" }, ...custom.map((p) => h("span", { class: "chip" },
-                    h("span", { class: "ipa" }, p.ipa), h("small", {}, p.kind),
+                    h("span", { class: "ipa" }, p.ipa), h("small", {}, p.label ? `${p.kind}: ${p.label}` : p.kind),
                     h("button", {
                         type: "button", title: "Remove",
                         onclick: () => { draft.phonemes = draft.phonemes.filter((q) => q !== p); render(); }
                     }, "×")))),
-                h("div", { class: "row" }, input, kind, h("button", { type: "button", onclick: add }, "Add"), marks));
+                h("div", { class: "row" }, input, kind, label, h("button", { type: "button", onclick: add }, "Add"), marks));
+        }
+
+        // Tones and stress marks: chosen from the usual ones or added below. They are not sounds, but
+        // spelling can use them (á = a˥), and words keep them in their transcriptions.
+        function prosodySection() {
+            const presets = [...chart.tones, ...chart.stress];
+            const others = draft.phonemes.filter((p) => (p.kind === "tone" || p.kind === "stress") && !presets.some((q) => q.ipa === p.ipa));
+            return h("div", { class: "field" },
+                h("h3", {}, "Tones and stress"),
+                h("p", { class: "hint" }, "For tonal languages (the Chao tone letters ˥ high … ˩ low, two or three together for a contour), for pitch accent, and for stress marks. A letter in the spelling can then stand for a vowel with a tone, such as á = a˥, or for a mark on its own. Other marks go in the box below, as tone or stress."),
+                h("div", { class: "prosody-keys" }, ...presets.map((symbol) => h("button", {
+                    type: "button",
+                    class: `ipa-key wide${has(symbol.ipa) ? " on" : ""}`,
+                    title: symbol.label,
+                    "aria-pressed": has(symbol.ipa) ? "true" : "false",
+                    onclick: () => toggle(symbol)
+                }, h("span", {}, symbol.ipa), h("small", {}, symbol.label)))),
+                others.length
+                    ? h("div", { class: "chips" }, ...others.map((p) => h("span", { class: "chip" },
+                        h("span", { class: "ipa" }, p.ipa), h("small", {}, p.label ? `${p.kind}: ${p.label}` : p.kind),
+                        h("button", {
+                            type: "button", title: "Remove",
+                            onclick: () => { draft.phonemes = draft.phonemes.filter((q) => q !== p); render(); }
+                        }, "×"))))
+                    : null);
         }
 
         function soundsTab() {
@@ -1266,6 +1295,7 @@
                 h("p", { class: "hint" }, `Click a symbol to add it to the inventory, and again to take it out. ${consonants} consonant${consonants === 1 ? "" : "s"}, ${vowels} vowel${vowels === 1 ? "" : "s"}.`),
                 h("h3", {}, "Consonants"), consonantTable(),
                 h("h3", {}, "Vowels"), vowelTable(),
+                prosodySection(),
                 customSection());
         }
 

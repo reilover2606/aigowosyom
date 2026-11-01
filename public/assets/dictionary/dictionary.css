@@ -1085,3 +1085,21 @@ button.danger {
     font-size: 0.7em;
     margin-left: 6px;
 }
+
+.prosody-list {
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+}
+
+.prosody-list .ipa {
+    font-size: 1.4em;
+    margin-right: 4px;
+}
+
+.flow-diagram .flow-node.flow-tone rect,
+.flow-diagram .flow-node.flow-stress rect {
+    fill: var(--series-4, #eda100);
+}

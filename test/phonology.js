@@ -35,8 +35,8 @@ check("saving an inventory fills in what is known about each symbol", () => {
     assert.deepStrictEqual([long.kind, long.height, long.backness], ["vowel", "open", "front"]);
 });
 
-check("a symbol it doesn't know needs to be said to be a consonant or a vowel", () => {
-    throws(() => phon.savePhonology(proto.id, { phonemes: [{ ipa: "§" }], graphemes: [] }), "consonant or a vowel");
+check("a symbol it doesn't know needs to be said to be a consonant, a vowel, a tone or a stress mark", () => {
+    throws(() => phon.savePhonology(proto.id, { phonemes: [{ ipa: "§" }], graphemes: [] }), "consonant, a vowel");
 });
 
 check("spelling is matched longest letters first, and each letter maps to inventory sounds", () => {
@@ -63,6 +63,23 @@ check("a spelling using a sound that isn't in the inventory is refused", () => {
     throws(() => phon.savePhonology(proto.id, {
         phonemes: [{ ipa: "k" }], graphemes: [{ grapheme: "c", ipa: "k" }, { grapheme: "c", ipa: "k" }]
     }), "twice");
+});
+
+check("tones and stress are kept as marks of their own, not as consonants or vowels", () => {
+    const tonal = dict.createLanguage({ slug: "tonal", name: "Tonal" });
+    const saved = phon.savePhonology(tonal.id, {
+        phonemes: [{ ipa: "m" }, { ipa: "a" }, { ipa: "˥" }, { ipa: "˩" }, { ipa: "ˈ" }, { ipa: "ꜛ", kind: "tone", label: "upstep" }],
+        graphemes: [
+            { grapheme: "m", ipa: "m" }, { grapheme: "a", ipa: "a" },
+            { grapheme: "á", ipa: "a˥" }, { grapheme: "à", ipa: "a˩" }, { grapheme: "'", ipa: "ˈ" }
+        ]
+    });
+    assert.deepStrictEqual(saved.phonemes.map((p) => p.kind), ["consonant", "vowel", "tone", "tone", "stress", "tone"]);
+    assert.strictEqual(saved.phonemes.find((p) => p.ipa === "˥").label, "high");
+    assert.strictEqual(saved.phonemes.find((p) => p.ipa === "ꜛ").label, "upstep");
+    assert.deepStrictEqual(phon.transcribe(tonal.id, "máma").phonemes, ["m", "a", "˥", "m", "a"]);
+    const report = phon.analyze(tonal.id);
+    assert.strictEqual(report.consonants + report.vowels, report.totalPhonemes - report.tones - report.stresses);
 });
 
 check("alignment lines up like sounds and marks losses and gains", () => {
