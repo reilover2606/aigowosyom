@@ -21,6 +21,7 @@
         total: 0,
         filter: "",
         sort: recallSort(),
+        templates: [],
         draft: null,
         dirty: false
     };
@@ -315,6 +316,11 @@
         title: "The language's phoneme inventory, and which letters stand for which sounds",
         onclick: () => openPhonologyDialog(currentLanguage())
     }, "Sounds and spelling");
+    const templatesButton = h("button", {
+        type: "button",
+        title: "The language's inflection templates: paradigms of forms along categories such as person, number, tense and case",
+        onclick: () => openTemplatesDialog(currentLanguage())
+    }, "Inflection templates");
     const newLanguageButton = h("button", {
         type: "button",
         onclick: () => openLanguageDialog(null)
@@ -325,7 +331,7 @@
     const sidebarEl = h("aside", { class: "panel sidebar" },
             languageSelect,
             h("div", { class: "row" }, editLanguageButton, newLanguageButton),
-            h("div", { class: "row" }, soundsButton),
+            h("div", { class: "row" }, soundsButton, templatesButton),
             filterInput,
             sortSelect,
             newWordButton,
@@ -433,8 +439,21 @@
         renderLanguageSelect();
     }
 
+    // The language's inflection templates (for the word form's tables).
+    async function loadTemplates() {
+        state.templates = [];
+        if (state.languageId) {
+            try {
+                state.templates = await api("GET", `/api/dictionary/inflection-templates?language=${state.languageId}`);
+            } catch (error) {
+                state.templates = [];
+            }
+        }
+    }
+
     async function selectLanguage(id) {
         state.languageId = id;
+        await loadTemplates();
         state.filter = "";
         filterInput.value = "";
         state.draft = null;
@@ -462,7 +481,8 @@
             senses: [""],
             variantOf: [],
             variantForms: [],
-            ancestors: []
+            ancestors: [],
+            inflections: []
         };
     }
 
@@ -489,6 +509,11 @@
             // Words that are variants of this one: this word is a base word
             // and so can't itself become a variant.
             variantForms: word.variantForms.map((v) => v.headword),
+            inflections: (word.inflections || []).map((i) => ({
+                template_id: i.template_id,
+                stem: i.stem || "",
+                overrides: { ...i.overrides }
+            })),
             ancestors: word.ancestors.map((a) => ({
                 id: a.id,
                 kind: a.kind,
@@ -634,6 +659,8 @@
         const sensesEl = h("div", { class: "list-rows" });
         const variantsEl = h("div", { class: "list-rows" });
         const ancestorsEl = h("div", { class: "list-rows" });
+        const importEl = h("div", { class: "import-senses" });
+        const inflectionBox = inflectionSection(draft, language, markDirty);
 
         // ---- Senses ----
         function renderSenses() {
@@ -748,12 +775,13 @@
                                         });
                                         markDirty();
                                         renderAncestors();
+                                        renderImport();
                                     }
                                 })),
                         kindSelect(
                             [["inherited", "inherited from"], ["borrowed", "borrowed from"], ["areal", "areally related to"]],
                             ancestor.kind,
-                            (value) => { ancestor.kind = value; }
+                            (value) => { ancestor.kind = value; renderImport(); }
                         ),
                         h("input", {
                             type: "text",
@@ -768,15 +796,53 @@
                             draft.ancestors.splice(i, 1);
                             markDirty();
                             renderAncestors();
+                            renderImport();
                         })
                     )
                 )
             );
         }
 
+        // ---- Import the senses of the ancestor word(s) ----
+        // One button per ancestor (inherited ones first): copies all of its senses here, skipping any
+        // this word already has, so the parent language's meanings are a click away.
+        function renderImport() {
+            const ancestors = draft.ancestors
+                .filter((a) => a.id)
+                .sort((a, b) => Number(b.kind === "inherited") - Number(a.kind === "inherited"));
+            importEl.replaceChildren(...ancestors.map((ancestor) => h("button", {
+                type: "button",
+                title: `Copy every definition of ${ancestor.label} (${ancestor.language}) into this word`,
+                onclick: async (event) => {
+                    const button = event.currentTarget;
+                    button.disabled = true;
+                    try {
+                        const parent = await api("GET", `/api/dictionary/words/${ancestor.id}`);
+                        const have = new Set(draft.senses.map((x) => x.trim()));
+                        const fresh = parent.senses.filter((x) => x.trim() && !have.has(x.trim()));
+                        if (draft.senses.length === 1 && !draft.senses[0].trim()) {
+                            draft.senses = [];
+                        }
+                        draft.senses.push(...fresh);
+                        if (!draft.senses.length) {
+                            draft.senses = [""];
+                        }
+                        markDirty();
+                        renderSenses();
+                        setStatus(fresh.length ? `Imported ${fresh.length} sense${fresh.length === 1 ? "" : "s"} from ${ancestor.label}.` : `${ancestor.label} has no senses this word doesn't already have.`, fresh.length ? "ok" : "");
+                    } catch (error) {
+                        setStatus(error.message, "error");
+                    } finally {
+                        button.disabled = false;
+                    }
+                }
+            }, `Import senses from ${ancestor.label} (${ancestor.language})`)));
+        }
+
         renderSenses();
         renderVariants();
         renderAncestors();
+        renderImport();
 
         const posList = h("datalist", { id: "pos-suggestions" },
             ...POS_SUGGESTIONS.map((pos) => h("option", { value: pos })));
@@ -824,6 +890,7 @@
                 h("span", { class: "label" }, "Definitions",
                     h("span", { class: "hint" }, " — one per sense. ", LINK_HINT)),
                 sensesEl,
+                importEl,
                 h("div", {}, h("button", {
                     type: "button",
                     onclick: () => {
@@ -875,8 +942,9 @@
             ),
 
             h("div", { class: "field" },
-                h("span", { class: "label" }, "Inflection tables"),
-                h("div", { class: "placeholder-box" }, "Declension and conjugation tables will be added here later.")
+                h("span", { class: "label" }, "Inflection tables",
+                    h("span", { class: "hint" }, " — the paradigms this word follows (templates are made under Inflection templates)")),
+                inflectionBox
             ),
 
             hiddenField(draft.hidden, (value) => { draft.hidden = value; markDirty(); }).element,
@@ -894,6 +962,9 @@
                 draft.id && !draft.locked ? h("button", { type: "button", class: "danger", onclick: removeWord }, "Delete") : null
             )
         );
+
+        // The tables' placeholders follow the headword; the suggested templates follow the part of speech.
+        formEl.querySelector("[name=headword]").addEventListener("input", () => inflectionBox.refresh());
 
         // A built-in entry: show everything read-only, except the etymology
         // notes (the only part that can be edited), with a pointer to the lore
@@ -942,7 +1013,8 @@
             variantOf: draft.variantOf.filter((v) => v.id).map((v) => ({ id: v.id, kind: v.kind })),
             ancestors: draft.ancestors
                 .filter((a) => a.id)
-                .map((a) => ({ id: a.id, kind: a.kind, note: a.note }))
+                .map((a) => ({ id: a.id, kind: a.kind, note: a.note })),
+            inflections: draft.inflections.map((i) => ({ template_id: i.template_id, stem: i.stem, overrides: i.overrides }))
         };
 
         try {
@@ -1117,6 +1189,470 @@
         nameInput.focus();
     }
 
+
+    // ------------------------------------------------------
+    // Inflection templates (paradigms) and the tables words follow
+    // ------------------------------------------------------
+
+    const cellPaths = (dims) => dims.reduce((out, dim) => out.flatMap((path) => dim.values.map((_, i) => [...path, i])), [[]]);
+    const cellKeyOf = (row, col) => `${row.join(".")}|${col.join(".")}`;
+
+    // The table for a template: category values down the side and along the top, nested; renderCell(key)
+    // gives the content of each cell.
+    function templateGrid(template, renderCell) {
+        const rowPaths = cellPaths(template.rows);
+        const colPaths = cellPaths(template.cols);
+        const R = template.rows.length;
+        const C = template.cols.length;
+        const span = (dims, level) => dims.slice(level + 1).reduce((n, dim) => n * dim.values.length, 1);
+
+        const head = [];
+        if (C === 0) {
+            head.push(h("tr", {}, ...template.rows.map((d) => h("th", { class: "axis" }, d.name)), h("th", {}, "Form")));
+        } else {
+            for (let level = 0; level < C; level++) {
+                head.push(h("tr", {},
+                    level === 0 && R ? h("th", { class: "corner", rowspan: String(C), colspan: String(R) }, template.rows.map((d) => d.name).join(" / ")) : null,
+                    ...colPaths
+                        .filter((path) => path.slice(level + 1).every((i) => i === 0))
+                        .map((path) => h("th", { colspan: String(span(template.cols, level)) }, template.cols[level].values[path[level]]))));
+            }
+        }
+
+        const body = rowPaths.map((row) => h("tr", {},
+            ...template.rows.map((dim, level) => (row.slice(level + 1).every((i) => i === 0)
+                ? h("th", { scope: "row", rowspan: String(span(template.rows, level)) }, dim.values[row[level]])
+                : null)),
+            ...(colPaths.length ? colPaths : [[]]).map((col) => h("td", {}, renderCell(cellKeyOf(row, col))))));
+
+        return h("div", { class: "inflection-scroll" }, h("table", { class: "inflection-table" },
+            h("thead", {}, ...head), h("tbody", {}, ...body)));
+    }
+
+    // The stem a template gives a headword (its "stem removal": "-a" the end, "ge-" the start).
+    function stemFor(template, headword) {
+        const word = (headword || "").replace(/^\*/, "");
+        const remove = (template.stem_remove || "").trim();
+        if (!remove) {
+            return word;
+        }
+        if (remove.startsWith("-") && word.endsWith(remove.slice(1)) && word.length > remove.length - 1) {
+            return word.slice(0, word.length - (remove.length - 1));
+        }
+        if (remove.endsWith("-") && word.startsWith(remove.slice(0, -1)) && word.length > remove.length - 1) {
+            return word.slice(remove.length - 1);
+        }
+        if (!remove.startsWith("-") && !remove.endsWith("-") && word.endsWith(remove) && word.length > remove.length) {
+            return word.slice(0, word.length - remove.length);
+        }
+        return word;
+    }
+
+    // What the template gives for a cell with this stem ("" if it has no pattern, "—" for no such form).
+    function formFor(template, key, stem, headword) {
+        const pattern = template.cells[key];
+        if (!pattern) {
+            return "";
+        }
+        if (/^(—|–|-|n\/a)$/i.test(pattern.trim())) {
+            return "—";
+        }
+        return pattern.replace(/\{stem\}/g, stem).replace(/\{headword\}/g, (headword || "").replace(/^\*/, ""));
+    }
+
+    // ---- the word form's tables ----
+
+    function inflectionSection(draft, language, markDirty_) {
+        const box = h("div", { class: "inflection-section" });
+        const refreshers = [];
+
+        function render() {
+            refreshers.length = 0;
+            const templates = state.templates;
+            const used = new Set(draft.inflections.map((i) => i.template_id));
+            const free = templates.filter((t) => !used.has(t.id));
+            // Templates for this word's part of speech first.
+            free.sort((a, b) => Number((b.pos || "").toLowerCase() === (draft.pos || "").trim().toLowerCase()) - Number((a.pos || "").toLowerCase() === (draft.pos || "").trim().toLowerCase()) || a.name.localeCompare(b.name));
+
+            const select = h("select", {}, ...free.map((t) => h("option", { value: String(t.id) }, `${t.name}${t.pos ? ` (${t.pos})` : ""}`)));
+            const add = () => {
+                if (!select.value) {
+                    return;
+                }
+                draft.inflections.push({ template_id: Number(select.value), stem: "", overrides: {} });
+                markDirty_();
+                render();
+            };
+
+            box.replaceChildren(
+                ...draft.inflections.map((entry, index) => {
+                    const template = templates.find((t) => t.id === entry.template_id);
+                    if (!template) {
+                        return h("p", { class: "status error" }, "A table whose template no longer exists.");
+                    }
+                    const stemInput = h("input", {
+                        type: "text", class: "conlang", size: "14", value: entry.stem, autocomplete: "off",
+                        placeholder: stemFor(template, draft.headword),
+                        oninput: (event) => { entry.stem = event.target.value; markDirty_(); refresh(); }
+                    });
+                    const inputs = new Map();
+                    const grid = templateGrid(template, (key) => {
+                        const input = h("input", {
+                            type: "text", class: "conlang cell-input", value: entry.overrides[key] || "", autocomplete: "off",
+                            oninput: (event) => {
+                                if (event.target.value.trim()) {
+                                    entry.overrides[key] = event.target.value;
+                                } else {
+                                    delete entry.overrides[key];
+                                }
+                                markDirty_();
+                                input.classList.toggle("own", Boolean(event.target.value.trim()));
+                            }
+                        });
+                        input.classList.toggle("own", Boolean(entry.overrides[key]));
+                        inputs.set(key, input);
+                        return input;
+                    });
+                    function refresh() {
+                        const stem = (entry.stem || "").trim() || stemFor(template, draft.headword);
+                        for (const [key, input] of inputs) {
+                            input.placeholder = formFor(template, key, stem, draft.headword);
+                        }
+                    }
+                    refresh();
+                    refreshers.push(() => { stemInput.placeholder = stemFor(template, draft.headword); refresh(); });
+
+                    const change = h("select", {
+                        onchange: (event) => {
+                            const next = Number(event.target.value);
+                            if (next !== entry.template_id) {
+                                entry.template_id = next;
+                                entry.overrides = {};
+                                markDirty_();
+                                render();
+                            }
+                        }
+                    }, ...templates.filter((t) => t.id === entry.template_id || !used.has(t.id))
+                        .map((t) => h("option", { value: String(t.id), selected: t.id === entry.template_id }, `${t.name}${t.pos ? ` (${t.pos})` : ""}`)));
+
+                    return h("div", { class: "inflection-entry" },
+                        h("div", { class: "row" },
+                            change,
+                            h("label", {}, "Stem ", stemInput),
+                            h("span", { class: "grow" }),
+                            removeButton(() => {
+                                draft.inflections.splice(index, 1);
+                                markDirty_();
+                                render();
+                            }, "Remove this table")),
+                        template.description ? h("p", { class: "hint" }, template.description) : null,
+                        grid,
+                        h("p", { class: "hint" }, "Grey forms come from the template and the stem; type in a cell to give this word its own form there, or — for a form that doesn't exist."));
+                }),
+                templates.length === 0
+                    ? h("p", { class: "hint" }, `${language.name} has no inflection templates yet. `,
+                        h("button", { type: "button", onclick: () => openTemplatesDialog(language) }, "Make one"))
+                    : free.length
+                        ? h("div", { class: "row" }, select, h("button", { type: "button", onclick: add }, "Add a table"),
+                            h("button", { type: "button", onclick: () => openTemplatesDialog(language) }, "Edit templates"))
+                        : h("div", { class: "row" }, h("button", { type: "button", onclick: () => openTemplatesDialog(language) }, "Edit templates")));
+        }
+
+        render();
+        box.refresh = () => refreshers.forEach((f) => f());
+        return box;
+    }
+
+    // ---- the templates dialog ----
+
+    const PRESETS = [
+        ["Blank", { rows: [], cols: [] }],
+        ["Noun: case × number", {
+            rows: [{ name: "Case", values: ["nominative", "accusative", "genitive", "dative"] }],
+            cols: [{ name: "Number", values: ["singular", "plural"] }]
+        }],
+        ["Verb: person and number × tense", {
+            rows: [{ name: "Person", values: ["1st", "2nd", "3rd"] }, { name: "Number", values: ["singular", "plural"] }],
+            cols: [{ name: "Tense", values: ["present", "past"] }]
+        }],
+        ["Adjective: gender × number", {
+            rows: [{ name: "Gender", values: ["masculine", "feminine", "neuter"] }],
+            cols: [{ name: "Number", values: ["singular", "plural"] }]
+        }]
+    ];
+
+    // Re-addressing the cells when a category or value is added, removed or moved.
+    function remapCells(cells, axis, change) {
+        const out = {};
+        for (const [key, pattern] of Object.entries(cells)) {
+            const [r, c] = key.split("|");
+            const paths = [r ? r.split(".").map(Number) : [], c ? c.split(".").map(Number) : []];
+            const next = change(paths[axis]);
+            if (next === null) {
+                continue;
+            }
+            paths[axis] = next;
+            out[cellKeyOf(paths[0], paths[1])] = pattern;
+        }
+        return out;
+    }
+
+    async function openTemplatesDialog(language) {
+        if (!language) {
+            return;
+        }
+        let templates;
+        try {
+            templates = await api("GET", `/api/dictionary/inflection-templates?language=${language.id}`);
+        } catch (error) {
+            alert(error.message);
+            return;
+        }
+
+        const blank = () => ({ id: null, name: "", pos: "", description: "", stem_remove: "", rows: [], cols: [], cells: {}, words: 0 });
+        const clone = (t) => JSON.parse(JSON.stringify(t));
+        let draft = templates.length ? clone(templates[0]) : blank();
+        let dirty = false;
+        const errorEl = h("div", { class: "status error" });
+        const listEl = h("div", { class: "template-list" });
+        const formEl_ = h("div", { class: "template-form" });
+        const touch = () => { dirty = true; };
+
+        const select = (template) => {
+            if (dirty && !confirm("Discard the changes to this template?")) {
+                return;
+            }
+            draft = template ? clone(template) : blank();
+            dirty = false;
+            errorEl.textContent = "";
+            render();
+        };
+
+        function renderList() {
+            listEl.replaceChildren(
+                ...templates.map((t) => h("button", {
+                    type: "button", class: t.id === draft.id ? "active" : "",
+                    onclick: () => select(t)
+                }, h("strong", {}, t.name), h("small", {}, `${t.pos || "no part of speech"} · ${t.words} word${t.words === 1 ? "" : "s"}`))),
+                h("button", { type: "button", class: `new${draft.id === null ? " active" : ""}`, onclick: () => select(null) }, "+ New template"));
+        }
+
+        // One axis (rows or columns): its categories and their values.
+        function axisEditor(axis, label) {
+            const dims = draft[axis];
+            const index = axis === "rows" ? 0 : 1;
+            return h("div", { class: "axis-editor" },
+                h("h4", {}, label),
+                ...dims.map((dim, d) => h("div", { class: "dimension" },
+                    h("div", { class: "row" },
+                        h("input", {
+                            type: "text", value: dim.name, placeholder: "Category (Person, Case, Tense…)", size: "22", autocomplete: "off",
+                            oninput: (event) => { dim.name = event.target.value; touch(); }
+                        }),
+                        h("button", {
+                            type: "button", title: "Remove this category",
+                            onclick: () => {
+                                draft.cells = remapCells(draft.cells, index, (path) => (path[d] !== 0 ? null : path.filter((_, i) => i !== d)));
+                                dims.splice(d, 1);
+                                touch();
+                                render();
+                            }
+                        }, "Remove category")),
+                    h("div", { class: "values" }, ...dim.values.map((value, v) => h("div", { class: "value-row" },
+                        h("input", {
+                            type: "text", value, size: "16", autocomplete: "off",
+                            oninput: (event) => { dim.values[v] = event.target.value; touch(); },
+                            onchange: () => renderGridOnly()
+                        }),
+                        h("button", {
+                            type: "button", title: "Move up", disabled: v === 0,
+                            onclick: () => moveValue(index, d, dim, v, v - 1)
+                        }, "↑"),
+                        h("button", {
+                            type: "button", title: "Move down", disabled: v === dim.values.length - 1,
+                            onclick: () => moveValue(index, d, dim, v, v + 1)
+                        }, "↓"),
+                        h("button", {
+                            type: "button", title: "Remove this value", disabled: dim.values.length === 1,
+                            onclick: () => {
+                                draft.cells = remapCells(draft.cells, index, (path) => (path[d] === v ? null : path.map((x, i) => (i === d && x > v ? x - 1 : x))));
+                                dim.values.splice(v, 1);
+                                touch();
+                                render();
+                            }
+                        }, "×")))),
+                    h("button", {
+                        type: "button",
+                        onclick: () => { dim.values.push(""); touch(); render(); }
+                    }, "Add a value"))),
+                dims.length < 3
+                    ? h("button", {
+                        type: "button",
+                        onclick: () => {
+                            draft.cells = remapCells(draft.cells, index, (path) => [...path, 0]);
+                            dims.push({ name: "", values: ["value 1"] });
+                            touch();
+                            render();
+                        }
+                    }, dims.length ? "Add another category" : `Add a category ${axis === "rows" ? "down the side" : "along the top"}`)
+                    : null);
+        }
+
+        function moveValue(axisIndex, d, dim, from, to) {
+            draft.cells = remapCells(draft.cells, axisIndex, (path) => path.map((x, i) => {
+                if (i !== d) {
+                    return x;
+                }
+                if (x === from) {
+                    return to;
+                }
+                return from < to ? (x > from && x <= to ? x - 1 : x) : (x >= to && x < from ? x + 1 : x);
+            }));
+            [dim.values[from], dim.values[to]] = [dim.values[to], dim.values[from]];
+            touch();
+            render();
+        }
+
+        const gridEl = h("div", { class: "template-grid" });
+
+        // Blank names or values would make a table nobody can read: show the table only when there are none.
+        function renderGridOnly() {
+            const complete = [...draft.rows, ...draft.cols].every((d) => d.name.trim() && d.values.every((v) => v.trim()));
+            if (!complete) {
+                gridEl.replaceChildren(h("p", { class: "hint" }, "Name every category and value to see the table."));
+                return;
+            }
+            const cellCount = cellPaths(draft.rows).length * cellPaths(draft.cols).length;
+            gridEl.replaceChildren(
+                h("p", { class: "hint" },
+                    "Write the form in each cell. {stem} stands for the word's stem: {stem}ana, ge{stem}t, {stem}. Use — for a form that doesn't exist; leave a cell empty for nothing. ",
+                    `${cellCount} cell${cellCount === 1 ? "" : "s"}.`),
+                templateGrid(draft, (key) => h("input", {
+                    type: "text", class: "conlang cell-input", value: draft.cells[key] || "", placeholder: "{stem}", autocomplete: "off",
+                    oninput: (event) => {
+                        if (event.target.value.trim()) {
+                            draft.cells[key] = event.target.value;
+                        } else {
+                            delete draft.cells[key];
+                        }
+                        touch();
+                    }
+                })),
+                h("div", { class: "row" },
+                    h("button", {
+                        type: "button",
+                        title: "Put {stem} in every empty cell",
+                        onclick: () => {
+                            for (const r of cellPaths(draft.rows)) {
+                                for (const c of cellPaths(draft.cols)) {
+                                    const key = cellKeyOf(r, c);
+                                    if (!draft.cells[key]) {
+                                        draft.cells[key] = "{stem}";
+                                    }
+                                }
+                            }
+                            touch();
+                            renderGridOnly();
+                        }
+                    }, "Fill empty cells with {stem}")));
+        }
+
+        function render() {
+            renderList();
+            const patternPos = h("datalist", { id: "template-pos" }, ...POS_SUGGESTIONS.map((pos) => h("option", { value: pos })));
+            formEl_.replaceChildren(
+                h("div", { class: "field-grid" },
+                    h("div", { class: "field" }, h("label", {}, "Name"),
+                        h("input", { type: "text", value: draft.name, placeholder: "e.g. Weak verbs, a-nouns, irregular", autocomplete: "off", oninput: (event) => { draft.name = event.target.value; touch(); } })),
+                    h("div", { class: "field" }, h("label", {}, "Part of speech"),
+                        h("input", { type: "text", value: draft.pos, list: "template-pos", autocomplete: "off", oninput: (event) => { draft.pos = event.target.value; touch(); } })),
+                    h("div", { class: "field" }, h("label", {}, "Stem removal", h("span", { class: "hint" }, " — -a takes -a off the end of the headword to give the stem; ge- takes it off the start")),
+                        h("input", { type: "text", value: draft.stem_remove, size: "8", autocomplete: "off", oninput: (event) => { draft.stem_remove = event.target.value; touch(); } }))),
+                patternPos,
+                h("div", { class: "field" }, h("label", {}, "Notes", h("span", { class: "hint" }, " — which words follow this pattern, how it differs from the others")),
+                    h("textarea", { rows: "2", oninput: (event) => { draft.description = event.target.value; touch(); } }, draft.description)),
+                draft.rows.length === 0 && draft.cols.length === 0 && Object.keys(draft.cells).length === 0
+                    ? h("div", { class: "field" }, h("label", {}, "Start from"),
+                        h("div", { class: "row" }, ...PRESETS.map(([name, preset]) => h("button", {
+                            type: "button",
+                            onclick: () => { draft.rows = clone(preset.rows); draft.cols = clone(preset.cols); touch(); render(); }
+                        }, name))))
+                    : null,
+                h("div", { class: "axes" }, axisEditor("rows", "Down the side (rows)"), axisEditor("cols", "Along the top (columns)")),
+                h("h4", {}, "The table"),
+                gridEl);
+            renderGridOnly();
+        }
+
+        async function save() {
+            errorEl.textContent = "";
+            try {
+                const payload = { name: draft.name, pos: draft.pos, description: draft.description, stem_remove: draft.stem_remove, rows: draft.rows, cols: draft.cols, cells: draft.cells };
+                const saved = draft.id
+                    ? await api("PUT", `/api/dictionary/inflection-templates/${draft.id}`, payload)
+                    : await api("POST", "/api/dictionary/inflection-templates", { ...payload, language_id: language.id });
+                templates = await api("GET", `/api/dictionary/inflection-templates?language=${language.id}`);
+                draft = clone(templates.find((t) => t.id === saved.id));
+                dirty = false;
+                render();
+                errorEl.textContent = "";
+            } catch (error) {
+                errorEl.textContent = error.message;
+            }
+        }
+
+        const dialog = h("dialog", { class: "templates-dialog" },
+            h("h2", {}, `Inflection templates: ${language.name}`),
+            h("p", { class: "hint" }, "A template is a table of forms for one part of speech, laid out along categories. A language can have several for one part of speech (word classes, irregular or worn-down patterns); each word follows the ones it needs."),
+            h("div", { class: "templates-layout" }, listEl, formEl_),
+            errorEl,
+            h("div", { class: "form-actions" },
+                h("button", { type: "button", class: "primary", onclick: save }, "Save template"),
+                h("button", {
+                    type: "button",
+                    disabled: false,
+                    title: "Start a new template from a copy of this one (for a class that differs a little)",
+                    onclick: () => {
+                        draft = { ...clone(draft), id: null, name: draft.name ? `${draft.name} (copy)` : "", words: 0 };
+                        dirty = true;
+                        errorEl.textContent = "";
+                        render();
+                    }
+                }, "Duplicate"),
+                h("button", { type: "button", onclick: () => dialog.close() }, "Close"),
+                h("span", { class: "spacer" }),
+                h("button", {
+                    type: "button", class: "danger",
+                    onclick: async () => {
+                        if (!draft.id) {
+                            select(null);
+                            return;
+                        }
+                        const users = draft.words;
+                        if (!confirm(`Delete “${draft.name}”?${users ? ` ${users} word${users === 1 ? " follows" : "s follow"} it and will lose that table.` : ""}`)) {
+                            return;
+                        }
+                        try {
+                            await api("DELETE", `/api/dictionary/inflection-templates/${draft.id}`);
+                            templates = await api("GET", `/api/dictionary/inflection-templates?language=${language.id}`);
+                            draft = templates.length ? clone(templates[0]) : blank();
+                            dirty = false;
+                            render();
+                        } catch (error) {
+                            errorEl.textContent = error.message;
+                        }
+                    }
+                }, "Delete")));
+
+        dialog.addEventListener("close", async () => {
+            dialog.remove();
+            await loadTemplates();
+            renderForm(); // the word form's table choices
+        });
+        render();
+        document.body.append(dialog);
+        dialog.showModal();
+    }
 
     // ------------------------------------------------------
     // Sounds and spelling (the language's phonemes and orthography)

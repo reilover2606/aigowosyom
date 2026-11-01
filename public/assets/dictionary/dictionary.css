@@ -1152,3 +1152,73 @@ button.danger {
 .shape-table tr.shorter td { background: rgba(42, 120, 214, 0.08); }
 .shape-table tr.longer td { background: rgba(27, 175, 122, 0.1); }
 .two-up h4 { margin: 8px 0 4px; font-size: 0.95em; }
+
+.flow-leader {
+    stroke: var(--muted, #8d8c86);
+    stroke-width: 0.6;
+}
+
+.condition-list .weak {
+    color: var(--muted, #54595d);
+}
+
+/* ---- Inflection tables ---- */
+
+.inflection-scroll {
+    overflow-x: auto;
+    margin: 8px 0 14px;
+}
+
+.inflection-table {
+    border-collapse: collapse;
+    min-width: 280px;
+}
+
+.inflection-table caption {
+    caption-side: top;
+    text-align: left;
+    font-size: 0.85em;
+    color: var(--muted, #54595d);
+    padding-bottom: 4px;
+}
+
+.inflection-table th,
+.inflection-table td {
+    border: 1px solid var(--border, #c8ccd1);
+    padding: 5px 12px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.inflection-table thead th {
+    background: var(--panel-muted, rgba(0, 0, 0, 0.05));
+    font-weight: normal;
+    text-align: center;
+}
+
+.inflection-table tbody th {
+    background: var(--panel-muted, rgba(0, 0, 0, 0.05));
+    font-weight: normal;
+    font-size: 0.92em;
+    white-space: nowrap;
+}
+
+.inflection-table th.corner {
+    font-size: 0.8em;
+    color: var(--muted, #54595d);
+    text-align: left;
+}
+
+.inflection-table td.own .conlang {
+    font-weight: bold;
+}
+
+.inflection-table .stem {
+    opacity: 0.55;
+}
+
+.inflection-table .form-ipa {
+    display: block;
+    font-size: 0.8em;
+    color: var(--muted, #54595d);
+}
