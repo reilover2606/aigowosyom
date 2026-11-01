@@ -5,6 +5,8 @@
 const dict = require("../lib/dictionary");
 const lore = require("../lib/lore");
 const eras = require("../lib/eras");
+const phonology = require("../lib/phonology");
+const { CHART } = require("../lib/ipa");
 const { HttpError, sendJson, readJson, parseInteger } = require("../lib/http");
 
 const PREFIX = "/api/dictionary/";
@@ -72,6 +74,41 @@ module.exports = async function dictionaryApi(req, res, url) {
                 return true;
             }
         }
+    }
+
+    // ---- Phonology: the sound inventory and spelling of a language ----
+    // GET /ipa            the IPA reference charts
+    // GET|PUT /phonology/<language id>   { phonemes: [...], graphemes: [...] }
+    // GET /transcribe?language=<id>&q=<headword>   the headword's sounds, from the spelling
+    if (resource === "ipa" && parts.length === 1 && method === "GET") {
+        sendJson(res, 200, CHART);
+        return true;
+    }
+
+    if (resource === "phonology" && parts.length === 2) {
+        const id = parseInteger(rawId, "id");
+        if (!dict.getLanguage(id)) {
+            throw new HttpError(404, "Language not found");
+        }
+        if (method === "GET") {
+            sendJson(res, 200, phonology.getPhonology(id));
+            return true;
+        }
+        if (method === "PUT") {
+            sendJson(res, 200, phonology.savePhonology(id, await readJson(req)));
+            return true;
+        }
+    }
+
+    if (resource === "transcribe" && parts.length === 1 && method === "GET") {
+        const id = parseInteger(params.get("language"), "language");
+        const result = phonology.transcribe(id, params.get("q") || "");
+        sendJson(res, 200, {
+            ipa: result.complete ? phonology.slashed(result.phonemes) : null,
+            unknown: result.unknown,
+            hasSpelling: phonology.hasOrthography(id)
+        });
+        return true;
     }
 
     // ---- Words --------------------------------------------------------

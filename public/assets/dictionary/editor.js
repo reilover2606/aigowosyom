@@ -310,6 +310,11 @@
         type: "button",
         onclick: () => openLanguageDialog(currentLanguage())
     }, "Edit language");
+    const soundsButton = h("button", {
+        type: "button",
+        title: "The language's phoneme inventory, and which letters stand for which sounds",
+        onclick: () => openPhonologyDialog(currentLanguage())
+    }, "Sounds and spelling");
     const newLanguageButton = h("button", {
         type: "button",
         onclick: () => openLanguageDialog(null)
@@ -320,6 +325,7 @@
     const sidebarEl = h("aside", { class: "panel sidebar" },
             languageSelect,
             h("div", { class: "row" }, editLanguageButton, newLanguageButton),
+            h("div", { class: "row" }, soundsButton),
             filterInput,
             sortSelect,
             newWordButton,
@@ -557,6 +563,37 @@
         );
     }
 
+    // The pronunciation box, with a button that writes it from the headword's spelling when the
+    // language has an orthography set (see "Sounds and spelling").
+    function pronunciationField() {
+        const field = textField("Pronunciation", "pronunciation", { hint: "optional", conlang: true });
+        const input = field.querySelector("input");
+        const message = h("span", { class: "hint" });
+        const button = h("button", {
+            type: "button",
+            title: "Write the pronunciation from the headword's spelling (set the spelling under Sounds and spelling)",
+            onclick: async () => {
+                message.textContent = "";
+                try {
+                    const result = await api("GET", `/api/dictionary/transcribe?language=${state.languageId}&q=${encodeURIComponent(state.draft.headword || "")}`);
+                    if (result.ipa) {
+                        state.draft.pronunciation = result.ipa;
+                        input.value = result.ipa;
+                        markDirty();
+                    } else if (!result.hasSpelling) {
+                        message.textContent = " This language has no spelling set yet.";
+                    } else {
+                        message.textContent = ` No letter for: ${result.unknown.join(", ") || "(nothing to read)"}.`;
+                    }
+                } catch (error) {
+                    message.textContent = ` ${error.message}`;
+                }
+            }
+        }, "From spelling");
+        field.append(h("div", { class: "row" }, button, message));
+        return field;
+    }
+
     function kindSelect(options, value, onchange) {
         const select = h("select", {
             onchange: () => {
@@ -779,7 +816,7 @@
             posList,
 
             h("div", { class: "field-grid" },
-                textField("Pronunciation", "pronunciation", { hint: "optional", conlang: true }),
+                pronunciationField(),
                 textField("Sinographs", "sinographs", { hint: "optional", conlang: true })
             ),
 
@@ -1078,6 +1115,268 @@
         document.body.append(dialog);
         dialog.showModal();
         nameInput.focus();
+    }
+
+
+    // ------------------------------------------------------
+    // Sounds and spelling (the language's phonemes and orthography)
+    // ------------------------------------------------------
+
+    // Splits IPA into inventory symbols, longest first; null if some part isn't one.
+    function segmentIpa(text, symbols) {
+        const longest = [...symbols].sort((a, b) => b.length - a.length);
+        const memo = new Map();
+        const from = (at) => {
+            if (at === text.length) {
+                return [];
+            }
+            if (memo.has(at)) {
+                return memo.get(at);
+            }
+            let found = null;
+            for (const symbol of longest) {
+                if (text.startsWith(symbol, at)) {
+                    const rest = from(at + symbol.length);
+                    if (rest) {
+                        found = [symbol, ...rest];
+                        break;
+                    }
+                }
+            }
+            memo.set(at, found);
+            return found;
+        };
+        return text.length ? from(0) : null;
+    }
+
+    async function openPhonologyDialog(language) {
+        if (!language) {
+            return;
+        }
+        let chart;
+        let draft;
+        try {
+            [chart, draft] = await Promise.all([
+                api("GET", "/api/dictionary/ipa"),
+                api("GET", `/api/dictionary/phonology/${language.id}`)
+            ]);
+        } catch (error) {
+            alert(error.message);
+            return;
+        }
+
+        const onChart = new Map([...chart.consonants, ...chart.vowels].map((p) => [p.ipa, p]));
+        let tab = "sounds";
+        const errorEl = h("div", { class: "status error" });
+        const body = h("div", { class: "phonology-body" });
+        const tabs = h("div", { class: "tab-row" });
+        const has = (ipa) => draft.phonemes.some((p) => p.ipa === ipa);
+
+        function toggle(symbol) {
+            if (has(symbol.ipa)) {
+                draft.phonemes = draft.phonemes.filter((p) => p.ipa !== symbol.ipa);
+            } else {
+                draft.phonemes.push({ ...symbol });
+            }
+            render();
+        }
+
+        const symbolButton = (symbol) => h("button", {
+            type: "button",
+            class: `ipa-key${has(symbol.ipa) ? " on" : ""}`,
+            title: symbol.kind === "vowel"
+                ? `${symbol.height}, ${symbol.backness}, ${symbol.rounded ? "rounded" : "unrounded"}`
+                : `${symbol.voiced ? "voiced" : "voiceless"} ${symbol.place} ${symbol.manner}`,
+            "aria-pressed": has(symbol.ipa) ? "true" : "false",
+            onclick: () => toggle(symbol)
+        }, symbol.ipa);
+
+        function consonantTable() {
+            return h("div", { class: "chart-scroll" }, h("table", { class: "ipa-chart" },
+                h("thead", {}, h("tr", {}, h("th", {}), ...chart.places.map(([, label]) => h("th", {}, label)))),
+                h("tbody", {}, ...chart.manners.map(([manner, label]) => h("tr", {},
+                    h("th", {}, label),
+                    ...chart.places.map(([place]) => h("td", {},
+                        ...chart.consonants
+                            .filter((c) => c.place === place && c.manner === manner)
+                            .sort((a, b) => a.voiced - b.voiced)
+                            .map(symbolButton))))))));
+        }
+
+        function vowelTable() {
+            return h("div", { class: "chart-scroll" }, h("table", { class: "ipa-chart" },
+                h("thead", {}, h("tr", {}, h("th", {}), ...chart.backnesses.map(([, label]) => h("th", {}, label)))),
+                h("tbody", {}, ...chart.heights.map(([height, label]) => h("tr", {},
+                    h("th", {}, label),
+                    ...chart.backnesses.map(([backness]) => h("td", {},
+                        ...chart.vowels
+                            .filter((v) => v.height === height && v.backness === backness)
+                            .sort((a, b) => a.rounded - b.rounded)
+                            .map(symbolButton))))))));
+        }
+
+        function customSection() {
+            const custom = draft.phonemes.filter((p) => !onChart.has(p.ipa));
+            const input = h("input", { type: "text", class: "ipa-input", placeholder: "e.g. kʰ, aː, ã", size: "8", autocomplete: "off" });
+            const kind = h("select", {},
+                h("option", { value: "consonant" }, "consonant"),
+                h("option", { value: "vowel" }, "vowel"));
+            // The marks that go after a symbol (length, aspiration, nasalisation, ...).
+            const marks = h("span", { class: "marks" }, ...chart.modifiers.map((m) => h("button", {
+                type: "button",
+                title: `Add ${m}`,
+                onclick: () => { input.value += m; input.focus(); }
+            }, m.length === 1 && /\p{M}/u.test(m) ? `◌${m}` : m)));
+            const add = () => {
+                const ipa = input.value.trim().normalize("NFC");
+                if (!ipa) {
+                    return;
+                }
+                if (has(ipa)) {
+                    errorEl.textContent = `/${ipa}/ is already in the inventory.`;
+                    return;
+                }
+                errorEl.textContent = "";
+                const base = onChart.get(ipa) || onChart.get([...ipa][0]);
+                draft.phonemes.push(base ? { ipa, kind: base.kind } : { ipa, kind: kind.value });
+                render();
+            };
+            input.addEventListener("keydown", (event) => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    add();
+                }
+            });
+            return h("div", { class: "field" },
+                h("span", { class: "label" }, "Other sounds",
+                    h("span", { class: "hint" }, " — anything not on the charts: long, aspirated or nasal versions, clicks, tones…")),
+                h("div", { class: "chips" }, ...custom.map((p) => h("span", { class: "chip" },
+                    h("span", { class: "ipa" }, p.ipa), h("small", {}, p.kind),
+                    h("button", {
+                        type: "button", title: "Remove",
+                        onclick: () => { draft.phonemes = draft.phonemes.filter((q) => q !== p); render(); }
+                    }, "×")))),
+                h("div", { class: "row" }, input, kind, h("button", { type: "button", onclick: add }, "Add"), marks));
+        }
+
+        function soundsTab() {
+            const consonants = draft.phonemes.filter((p) => p.kind === "consonant").length;
+            const vowels = draft.phonemes.filter((p) => p.kind === "vowel").length;
+            return h("div", {},
+                h("p", { class: "hint" }, `Click a symbol to add it to the inventory, and again to take it out. ${consonants} consonant${consonants === 1 ? "" : "s"}, ${vowels} vowel${vowels === 1 ? "" : "s"}.`),
+                h("h3", {}, "Consonants"), consonantTable(),
+                h("h3", {}, "Vowels"), vowelTable(),
+                customSection());
+        }
+
+        function spellingTab() {
+            const symbols = draft.phonemes.map((p) => p.ipa);
+            const spelledSounds = new Set();
+            for (const g of draft.graphemes) {
+                (segmentIpa((g.ipa || "").normalize("NFC"), symbols) || []).forEach((x) => spelledSounds.add(x));
+            }
+            const unspelled = symbols.filter((x) => !spelledSounds.has(x));
+
+            const row = (g) => {
+                const parts = segmentIpa((g.ipa || "").normalize("NFC"), symbols);
+                const status = h("span", { class: `spell-status ${!g.ipa ? "" : parts ? "ok" : "bad"}` },
+                    !g.ipa ? "" : parts ? `/${parts.join("")}/` : "not in the inventory");
+                const sound = h("input", {
+                    type: "text", class: "ipa-input", value: g.ipa, size: "10", placeholder: "IPA", autocomplete: "off",
+                    oninput: () => {
+                        g.ipa = sound.value;
+                        const next = segmentIpa(sound.value.normalize("NFC"), symbols);
+                        status.className = `spell-status ${!sound.value ? "" : next ? "ok" : "bad"}`;
+                        status.textContent = !sound.value ? "" : next ? `/${next.join("")}/` : "not in the inventory";
+                    }
+                });
+                return h("tr", {},
+                    h("td", {}, h("input", {
+                        type: "text", class: "conlang", value: g.grapheme, size: "5", placeholder: "letter(s)", autocomplete: "off",
+                        oninput: (event) => { g.grapheme = event.target.value; }
+                    })),
+                    h("td", {}, sound, " ", status),
+                    h("td", {}, h("input", {
+                        type: "text", value: g.note || "", size: "24", placeholder: "note (optional)", autocomplete: "off",
+                        oninput: (event) => { g.note = event.target.value; }
+                    })),
+                    h("td", {}, h("button", {
+                        type: "button", title: "Remove this letter",
+                        onclick: () => { draft.graphemes = draft.graphemes.filter((x) => x !== g); render(); }
+                    }, "×")));
+            };
+
+            return h("div", {},
+                draft.phonemes.length === 0
+                    ? h("p", { class: "status error" }, "Choose the language's sounds first (the Sounds tab); each letter then says which of them it stands for.")
+                    : null,
+                h("p", { class: "hint" }, "The spelling is taken to be phonetic: each letter (or group, such as “kh”) stands for one sound or a short run of sounds (x = ks). Longer groups win when a word is read. Matching ignores capitals but not accents, so ā and a are separate letters."),
+                h("table", { class: "spelling-edit" },
+                    h("thead", {}, h("tr", {}, h("th", {}, "Letters"), h("th", {}, "Sound(s)"), h("th", {}, "Note"), h("th", {}))),
+                    h("tbody", {}, ...draft.graphemes.map(row))),
+                h("div", { class: "row" },
+                    h("button", {
+                        type: "button",
+                        onclick: () => { draft.graphemes.push({ grapheme: "", ipa: "", note: "" }); render(); }
+                    }, "Add a letter"),
+                    h("button", {
+                        type: "button",
+                        disabled: unspelled.length === 0,
+                        title: "Adds a letter for each sound that has none, using the IPA symbol itself; change them to your spelling",
+                        onclick: () => {
+                            unspelled.forEach((x) => draft.graphemes.push({ grapheme: x, ipa: x, note: "" }));
+                            render();
+                        }
+                    }, `Add a letter for each unspelled sound (${unspelled.length})`)),
+                unspelled.length
+                    ? h("p", { class: "hint" }, "Sounds with no letter yet: ", ...unspelled.flatMap((x) => [h("span", { class: "ipa" }, x), " "]))
+                    : null);
+        }
+
+        function render() {
+            put(tabs,
+                ...[["sounds", "Sounds"], ["spelling", "Spelling"]].map(([key, label]) => h("button", {
+                    type: "button", class: tab === key ? "active" : "",
+                    onclick: () => { tab = key; render(); }
+                }, label)));
+            put(body, tab === "sounds" ? soundsTab() : spellingTab());
+        }
+
+        function put(el, ...kids) {
+            el.replaceChildren(...kids.flat());
+        }
+
+        const dialog = h("dialog", { class: "phonology-dialog" },
+            h("h2", {}, `Sounds and spelling: ${language.name}`),
+            tabs,
+            body,
+            errorEl,
+            h("div", { class: "form-actions" },
+                h("button", {
+                    type: "button", class: "primary",
+                    onclick: async () => {
+                        errorEl.textContent = "";
+                        try {
+                            await api("PUT", `/api/dictionary/phonology/${language.id}`, {
+                                phonemes: draft.phonemes,
+                                graphemes: draft.graphemes
+                                    .filter((g) => g.grapheme.trim() || g.ipa.trim())
+                                    .map((g) => ({ grapheme: g.grapheme, ipa: g.ipa, note: g.note }))
+                            });
+                            dialog.close();
+                        } catch (error) {
+                            errorEl.textContent = error.message;
+                        }
+                    }
+                }, "Save"),
+                h("button", { type: "button", onclick: () => dialog.close() }, "Cancel"),
+                h("span", { class: "spacer" }),
+                h("a", { href: `/dictionary/${encodeURIComponent(language.slug)}/?view=phonology`, target: "_blank" }, "See the public page")));
+
+        dialog.addEventListener("close", () => dialog.remove());
+        render();
+        document.body.append(dialog);
+        dialog.showModal();
     }
 
     // ------------------------------------------------------

@@ -942,3 +942,146 @@ button.danger {
     background: #f3f2ee;
     border: 1px solid #c8ccd1;
 }
+
+/* ---- Phonology and sound correspondences ---- */
+
+.ipa {
+    font-family: "Charis SIL", "Doulos SIL", "Gentium Plus", "Noto Serif", "DejaVu Serif", "Times New Roman", serif;
+    font-size: 1.05em;
+}
+
+.chart-scroll {
+    overflow-x: auto;
+}
+
+.ipa-chart {
+    border-collapse: collapse;
+    margin: 6px 0;
+}
+
+.ipa-chart th,
+.ipa-chart td {
+    border: 1px solid var(--border, #c8ccd1);
+    padding: 6px 12px;
+    text-align: center;
+    min-width: 4.5em;
+}
+
+.ipa-chart thead th,
+.ipa-chart tbody th {
+    font-weight: normal;
+    font-size: 0.85em;
+    color: var(--muted, #54595d);
+    background: var(--panel-muted, rgba(0, 0, 0, 0.04));
+}
+
+.ipa-chart tbody th {
+    text-align: left;
+    white-space: nowrap;
+}
+
+.ipa-chart td .ipa {
+    font-size: 1.3em;
+    margin: 0 3px;
+}
+
+.spelling-table td.num,
+.correspondence-table td.num {
+    text-align: right;
+}
+
+.problem-list {
+    columns: 3 14em;
+    padding-left: 1.2em;
+}
+
+.pair-list {
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+}
+
+.pair-list li {
+    padding: 4px 10px;
+    border: 1px solid var(--border, #c8ccd1);
+    border-radius: 14px;
+}
+
+.pair-list li.active {
+    background: var(--accent-soft, rgba(74, 124, 89, 0.15));
+    border-color: var(--accent, #4a7c59);
+}
+
+.flow-scroll {
+    overflow-x: auto;
+    margin: 8px 0 16px;
+}
+
+.flow-diagram {
+    width: 100%;
+    min-width: 560px;
+    max-width: 900px;
+    height: auto;
+    display: block;
+}
+
+.flow-diagram .flow {
+    opacity: 0.4;
+}
+
+.flow-diagram .flow:hover {
+    opacity: 0.85;
+}
+
+.flow-same { fill: var(--series-other, #8d8c86); }
+.flow-change { fill: var(--series-2, #eb6834); }
+.flow-loss { fill: var(--series-1, #2a78d6); }
+.flow-gain { fill: var(--series-3, #1baf7a); }
+
+.flow-diagram .flow-node rect { fill: var(--text, #202122); opacity: 0.75; }
+.flow-diagram .flow-node.flow-vowel rect { fill: var(--series-7, #6250d6); opacity: 0.9; }
+.flow-diagram .flow-node.flow-gap rect { fill: var(--series-none, #c3c2b7); }
+
+.flow-label {
+    fill: var(--text, #202122);
+    font-size: 15px;
+}
+
+.flow-heading {
+    fill: var(--muted, #54595d);
+    font-size: 13px;
+}
+
+.flow-key {
+    font-size: 0.9em;
+    display: flex;
+    gap: 14px;
+    margin: 6px 0;
+}
+
+.flow-key span::before {
+    content: "";
+    display: inline-block;
+    width: 14px;
+    height: 10px;
+    margin-right: 5px;
+    border-radius: 2px;
+    vertical-align: -1px;
+}
+
+.flow-key-same::before { background: var(--series-other, #8d8c86); }
+.flow-key-change::before { background: var(--series-2, #eb6834); }
+.flow-key-loss::before { background: var(--series-1, #2a78d6); }
+.flow-key-gain::before { background: var(--series-3, #1baf7a); }
+
+.correspondence-table td.arrow {
+    color: var(--muted, #54595d);
+    padding: 0 2px;
+}
+
+.correspondence-table .badge.small {
+    font-size: 0.7em;
+    margin-left: 6px;
+}
