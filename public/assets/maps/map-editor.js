@@ -36,7 +36,7 @@
         // how many feet a pixel of dragging is worth; how hard smoothing works.
         brush: { radius: 40, sharpness: 0.35, feetPerPixel: 12, smoothing: 0.5 },
         multi: [], // states marked together (shift-click), for combining
-        collapsed: new Set(), // superstates whose clients are folded away in the list
+        expanded: new Set(), // superstates whose clients are shown in the list (closed until opened)
         layers: { tracers: true, land: true, lakes: true, rivers: true, waterNames: true, states: true, labels: true, points: true },
         interactions: []
     };
@@ -109,7 +109,7 @@
                         }, Icons.el("close")))))
                     : h("p", { class: "hint" }, `No flora or fauna recorded in ${stateRow.name} itself yet.`),
                 clients.length
-                    ? h("details", { class: "clients", open: "" },
+                    ? h("details", { class: "clients" },
                         h("summary", {}, `Found in its clients (${clients.length}, shown on its lore page automatically)`),
                         h("ul", { class: "species-list" }, ...clients.map((sp) => h("li", {},
                             h("span", { class: `species-kind ${sp.kind}` }, sp.kind === "flora" ? "Flora" : "Fauna"),
@@ -1543,6 +1543,18 @@
         const bundle = state.bundle;
         const marked = new Set(state.multi.length ? state.multi : state.selection && state.selection.type === "state" ? [state.selection.id] : []);
 
+        // The lists start closed; choosing a state (on the map, say) opens the superstates around it once, so it is in view.
+        const key = [...marked].join(",");
+        if (bundle && key !== state.revealedKey) {
+            state.revealedKey = key;
+            const parentOf = new Map(bundle.states.map((x) => [x.id, x.parent_id]));
+            for (const id of marked) {
+                for (let up = parentOf.get(id), steps = 0; up && steps < 30; up = parentOf.get(up), steps++) {
+                    state.expanded.add(up);
+                }
+            }
+        }
+
         const list = (nodes) => h("ul", { class: "states-tree" }, ...nodes.map((s) =>
             h("li", {},
               h("div", { class: "tree-row" },
@@ -1550,13 +1562,13 @@
                     ? h("button", {
                         type: "button",
                         class: "fold",
-                        title: state.collapsed.has(s.id) ? `Show its ${s.kids.length} states` : "Fold its states away",
-                        "aria-expanded": state.collapsed.has(s.id) ? "false" : "true",
+                        title: state.expanded.has(s.id) ? "Fold its states away" : `Show its ${s.kids.length} states`,
+                        "aria-expanded": state.expanded.has(s.id) ? "true" : "false",
                         onclick: () => {
-                            state.collapsed.has(s.id) ? state.collapsed.delete(s.id) : state.collapsed.add(s.id);
+                            state.expanded.has(s.id) ? state.expanded.delete(s.id) : state.expanded.add(s.id);
                             renderStatesTree();
                         }
-                    }, Icons.el(state.collapsed.has(s.id) ? "chevronright" : "chevrondown"))
+                    }, Icons.el(state.expanded.has(s.id) ? "chevrondown" : "chevronright"))
                     : h("span", { class: "fold-spacer" }),
                 h("button", {
                     type: "button",
@@ -1569,8 +1581,8 @@
                             selectObject({ type: "state", id: s.id });
                         }
                     }
-                }, h("span", { class: "swatch", style: `background:${s.color}` }), s.name, s.status === "capital" ? " (capital)" : "", s.hidden ? " ·" : "", s.kids.length && state.collapsed.has(s.id) ? ` (${s.kids.length})` : "")),
-                s.kids.length && !state.collapsed.has(s.id) ? list(s.kids) : null)));
+                }, h("span", { class: "swatch", style: `background:${s.color}` }), s.name, s.status === "capital" ? " (capital)" : "", s.hidden ? " ·" : "", s.kids.length && !state.expanded.has(s.id) ? ` (${s.kids.length})` : "")),
+                s.kids.length && state.expanded.has(s.id) ? list(s.kids) : null)));
 
         const tree = bundle ? MapCore.stateTree(bundle.states) : [];
         put(statesEl,
@@ -1692,7 +1704,7 @@
                     : null,
                 statsBlock(s),
                 isGroup
-                    ? h("details", { class: "clients", open: "" },
+                    ? h("details", { class: "clients" },
                         h("summary", {}, `Made of ${clients.length} state${clients.length === 1 ? "" : "s"} (shown on its lore page automatically)`),
                         h("ul", { class: "states-tree" }, ...clients.map((c) =>
                             h("li", {}, h("button", { type: "button", onclick: () => selectObject({ type: "state", id: c.id }) },

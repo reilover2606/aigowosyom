@@ -668,3 +668,19 @@ dialog.species-dialog {
 .species-results .species-kind {
     margin-left: 4px;
 }
+
+/* Flora and fauna in the public map's side panel */
+.map-info .species h3 {
+    margin: 14px 0 4px;
+    font-size: 1em;
+}
+
+.map-info .species-lines {
+    list-style: none;
+    margin: 2px 0 8px;
+    padding: 0;
+}
+
+.map-info .species-lines li {
+    margin: 2px 0;
+}

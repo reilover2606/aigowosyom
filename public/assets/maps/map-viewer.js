@@ -29,7 +29,7 @@
     let bundle = null;
 
     // The states as a tree: a superstate with its clients indented below it.
-    const collapsed = new Set(); // superstates whose clients are folded away
+    const expanded = new Set(); // superstates whose clients are shown in the list (closed until opened)
 
     function stateList(nodes) {
         return el("ul", {},
@@ -40,18 +40,18 @@
                             ? el("button", {
                                 type: "button",
                                 class: "fold",
-                                title: collapsed.has(s.id) ? `Show its ${s.kids.length} states` : "Fold its states away",
-                                "aria-expanded": collapsed.has(s.id) ? "false" : "true",
+                                title: expanded.has(s.id) ? "Fold its states away" : `Show its ${s.kids.length} states`,
+                                "aria-expanded": expanded.has(s.id) ? "true" : "false",
                                 onclick: () => {
-                                    collapsed.has(s.id) ? collapsed.delete(s.id) : collapsed.add(s.id);
+                                    expanded.has(s.id) ? expanded.delete(s.id) : expanded.add(s.id);
                                     overview();
                                 }
-                            }, Icons.el(collapsed.has(s.id) ? "chevronright" : "chevrondown"))
+                            }, Icons.el(expanded.has(s.id) ? "chevrondown" : "chevronright"))
                             : el("span", { class: "fold-spacer" }),
                         el("button", { type: "button", onclick: () => choose({ type: "state", id: s.id }, true) },
                             el("span", { class: "swatch", style: `background:${s.color}` }), s.name,
-                            s.kids.length && collapsed.has(s.id) ? ` (${s.kids.length})` : "")),
-                    s.kids.length && !collapsed.has(s.id) ? stateList(s.kids) : null)));
+                            s.kids.length && !expanded.has(s.id) ? ` (${s.kids.length})` : "")),
+                    s.kids.length && expanded.has(s.id) ? stateList(s.kids) : null)));
     }
 
     function overview() {
@@ -61,6 +61,45 @@
             el("p", { class: "muted" }, "Click a state or a place on the map to read about it."),
             tree.length ? stateList(tree) : null
         );
+    }
+
+    // The flora and fauna found in a state, and for a superstate those of its clients too, each with how rare it is
+    // there (and, for a superstate, in which state).
+    function speciesBlock(s) {
+        const merged = new Map();
+        const entry = (sp) => {
+            if (!merged.has(sp.id)) {
+                merged.set(sp.id, { ...sp, found: [] });
+            }
+            return merged.get(sp.id);
+        };
+        for (const sp of s.species || []) {
+            entry(sp).found.push({ name: s.name, rarity: sp.rarity, label: sp.rarity_label });
+        }
+        for (const sp of s.species_clients || []) {
+            for (const f of sp.found) {
+                entry(sp).found.push({ name: f.state_name, rarity: f.rarity, label: f.rarity_label });
+            }
+        }
+        if (!merged.size) {
+            return null;
+        }
+        const aggregated = (s.species_clients || []).length > 0 || bundle.states.some((x) => x.parent_id === s.id);
+        const list = (kind, title) => {
+            const items = [...merged.values()]
+                .filter((sp) => sp.kind === kind)
+                .sort((a, b) => Math.min(...a.found.map((f) => f.rarity)) - Math.min(...b.found.map((f) => f.rarity)) || a.title.localeCompare(b.title));
+            return items.length
+                ? el("div", {}, el("p", { class: "muted" }, `${title}:`),
+                    el("ul", { class: "species-lines" }, items.map((sp) => el("li", {},
+                        el("a", { href: sp.url }, sp.title), " ",
+                        el("span", { class: "muted" }, `— ${aggregated ? sp.found.map((f) => `${f.name}: ${f.label}`).join(" · ") : sp.found[0].label}`)))))
+                : null;
+        };
+        return el("div", { class: "species" },
+            el("h3", {}, "Flora and fauna"),
+            list("flora", "Flora"),
+            list("fauna", "Fauna"));
     }
 
     function describe(selection) {
@@ -93,11 +132,12 @@
                             : null)
                     : null,
                 clients.length
-                    ? el("details", { class: "clients", open: "" }, el("summary", { class: "muted" }, `Made up of ${clients.length} state${clients.length === 1 ? "" : "s"}`),
+                    ? el("details", { class: "clients" }, el("summary", { class: "muted" }, `Made up of ${clients.length} state${clients.length === 1 ? "" : "s"}`),
                         el("ul", {}, clients.map((c) =>
                             el("li", {}, el("button", { type: "button", onclick: () => choose({ type: "state", id: c.id }, true) },
                                 el("span", { class: "swatch", style: `background:${c.color}` }), `${c.name} (${statusOf(c).toLowerCase()})`)))))
-                    : null);
+                    : null,
+                speciesBlock(s));
         }
 
         const p = bundle.points.find((x) => x.id === selection.id);
