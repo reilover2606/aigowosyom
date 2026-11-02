@@ -283,3 +283,33 @@
     margin: 0 0 6px;
     text-align: right;
 }
+
+/* Flora and fauna */
+.species-rarity {
+    margin: 0 0 8px;
+}
+
+.rarity {
+    display: inline-flex;
+    gap: 3px;
+    vertical-align: middle;
+}
+
+.rarity .dot {
+    width: 0.7em;
+    height: 0.7em;
+    border-radius: 50%;
+    border: 1.5px solid currentColor;
+    opacity: 0.45;
+}
+
+.rarity .dot.on {
+    background: currentColor;
+    opacity: 1;
+}
+
+.species-states h3,
+.state-species h3 {
+    font-size: 1em;
+    margin: 10px 0 2px;
+}

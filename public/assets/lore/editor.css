@@ -189,3 +189,8 @@ dialog.wide-dialog > input[type="search"] {
     background: #f3f2ee;
     color: #6b6a66;
 }
+
+.species-state-list {
+    margin: 4px 0;
+    padding-left: 1.2em;
+}

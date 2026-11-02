@@ -8,6 +8,7 @@ const dict = require("../lib/dictionary");
 const eras = require("../lib/eras");
 const books = require("../lib/books");
 const maps = require("../lib/maps");
+const species = require("../lib/species");
 const { calendarUrl } = require("../lib/notes");
 const { HttpError, sendHtml, redirect, parseInteger } = require("../lib/http");
 const appConfig = require("../lib/config");
@@ -191,7 +192,46 @@ function bookNotesHtml(book) {
     });
 }
 
+// Rarity as five dots (filled = how rare) and its words.
+function rarityHtml(rarity) {
+    const dots = [1, 2, 3, 4, 5].map((n) => `<span class="dot${n <= rarity ? " on" : ""}"></span>`).join("");
+    return `<span class="rarity" title="Rarity ${rarity} of 5">${dots}</span> ${esc(species.RARITY_LABELS[rarity])} <span class="muted">(${rarity} of 5)</span>`;
+}
+
+// Below a species' own text: the states where it is found (hard-coded, set on the map).
+function speciesStatesHtml(found) {
+    const states = species.statesOf(found.id);
+    const byMap = new Map();
+    for (const s of states) {
+        if (!byMap.has(s.map_id)) {
+            byMap.set(s.map_id, { name: s.map_name, slug: s.map_slug, states: [] });
+        }
+        byMap.get(s.map_id).states.push(s);
+    }
+    const body = states.length
+        ? [...byMap.values()].map((m) => `<h3><a href="/maps/${encodeURIComponent(m.slug)}">${esc(m.name)}</a></h3>
+            <ul>${m.states.map((s) => `<li><a href="${esc(s.url)}">${esc(s.name)}</a>${s.is_group ? ' <span class="muted">(superstate)</span>' : ""}</li>`).join("")}</ul>`).join("")
+        : `<p class="muted">Not found in any state yet.${ifEditing(" Add it to a state from the map editor: select the state and choose it under Flora and fauna.")}</p>`;
+    return `<section class="species-states"><h2>Found in</h2>${body}</section>`;
+}
+
+// On a state's page: the flora and fauna found there.
+function stateSpeciesHtml(stateId) {
+    const found = species.speciesIn(stateId);
+    if (!found.length) {
+        return "";
+    }
+    const list = (kind, title) => {
+        const items = found.filter((s) => s.kind === kind);
+        return items.length
+            ? `<h3>${title}</h3><ul>${items.map((s) => `<li><a href="/lore/${esc(s.category_slug)}/${esc(s.slug)}">${esc(s.title)}</a> <span class="muted">— ${esc(s.rarity_label)}</span></li>`).join("")}</ul>`
+            : "";
+    };
+    return `<section class="state-species"><h2>Flora and fauna</h2>${list("flora", "Flora")}${list("fauna", "Fauna")}</section>`;
+}
+
 function articlePage(res, category, page) {
+    const speciesInfo = species.getSpecies(page.id);
     const siblings = lore.listPageBrief(category.id);
 
     // Dictionary entries with the same name as this page.
@@ -257,6 +297,7 @@ function articlePage(res, category, page) {
             ${ifEditing(`<p class="page-actions"><a class="button-link small" href="/lore/editor?page=${page.id}" title="Open this page in the lore editor">${Icons.svg("edit")} Edit this page</a></p>`)}
             <h1>${esc(page.title)}</h1>
             <p class="lore-category">${langBadge(category.name, category.display_color, category.ink, categoryUrl(category.slug))}</p>
+            ${speciesInfo ? `<p class="species-rarity">Rarity: ${rarityHtml(speciesInfo.rarity)}</p>` : ""}
             ${eraSpan}
             ${stateLine}
             ${dictionaryLinks}
@@ -267,8 +308,10 @@ function articlePage(res, category, page) {
                       ? "" // a book's own text is optional
                       : '<div class="lore-body"><p class="muted">This page has no content yet.</p></div>'
             }
+            ${speciesInfo ? speciesStatesHtml(speciesInfo) : ""}
             ${era ? eraNotesHtml(era) : ""}
             ${clientsSection}
+            ${stateInfo ? stateSpeciesHtml(stateInfo.id) : ""}
             ${statsSection}
             ${book ? bookNotesHtml(book) : ""}
         </article>

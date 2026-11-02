@@ -44,6 +44,7 @@ const http = require("node:http");
 const { db } = require("./lib/db");
 require("./lib/eras").syncIfChanged(); // era pages for the lore section (editor only)
 require("./lib/books").ensureBooksCategory(); // the built-in Books category (editor only)
+require("./lib/species").ensureCategories(); // the built-in Flora and Fauna categories (editor only)
 const { HttpError, sendJson, sendHtml } = require("./lib/http");
 const { esc, layout } = require("./lib/render");
 

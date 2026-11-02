@@ -584,3 +584,39 @@ details.clients > summary {
     cursor: pointer;
     margin: 8px 0 4px;
 }
+
+/* Flora and fauna in the state panel */
+.species-box {
+    margin: 10px 0;
+}
+
+.species-list {
+    list-style: none;
+    margin: 4px 0 8px;
+    padding: 0;
+}
+
+.species-list li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+}
+
+.species-kind {
+    font-size: 0.7em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1px 6px;
+    border-radius: 8px;
+    color: #fff;
+    background: #2f855a;
+}
+
+.species-kind.fauna {
+    background: #c05621;
+}
+
+.species-list .small-button {
+    margin-left: auto;
+}

@@ -6,6 +6,7 @@
 const fs = require("node:fs");
 const zlib = require("node:zlib");
 const maps = require("../lib/maps");
+const species = require("../lib/species");
 const config = require("../lib/config");
 const { HttpError, sendJson, readJson, readBuffer, parseInteger } = require("../lib/http");
 
@@ -13,7 +14,7 @@ const MAX_IMAGE_BYTES = 120 * 1024 * 1024;
 
 module.exports = async function mapsApi(req, res, url) {
     const parts = url.pathname.split("/").filter(Boolean); // ["api", "maps", ...]
-    if (parts[0] !== "api" || !["maps", "map-features", "map-vertices", "map-states", "map-points", "map-images"].includes(parts[1])) {
+    if (parts[0] !== "api" || !["maps", "map-features", "map-vertices", "map-states", "map-points", "map-images", "species"].includes(parts[1])) {
         return false;
     }
 
@@ -165,6 +166,46 @@ module.exports = async function mapsApi(req, res, url) {
         if (handlers && handlers[method]) {
             const result = await handlers[method](method === "PUT" ? await readJson(req) : undefined);
             return send(200, result === undefined ? { ok: true } : result);
+        }
+    }
+
+    // ---- Flora and fauna (lib/species.js) ----
+    // GET  /api/species                              every species (flora, then fauna), with how many states
+    // PUT  /api/species/:id            { rarity }
+    // GET  /api/map-states/:id/species               the species found in a state
+    // POST /api/map-states/:id/species { kind, name, rarity }   a new species, found in this state
+    //                                  { species_id }           an existing species, added to this state
+    // DELETE /api/map-states/:id/species/:speciesId  no longer found there
+    if (resource === "species") {
+        if (parts.length === 2 && method === "GET") {
+            return send(200, species.listSpecies());
+        }
+        if (parts.length === 3 && method === "PUT") {
+            const data = await readJson(req);
+            return send(200, species.setRarity(id, data && data.rarity));
+        }
+    }
+
+    if (resource === "map-states" && sub === "species") {
+        if (parts.length === 4 && method === "GET") {
+            return send(200, species.speciesIn(id));
+        }
+        if (parts.length === 4 && method === "POST") {
+            const data = (await readJson(req)) || {};
+            if (data.species_id !== undefined) {
+                const speciesId = parseInteger(data.species_id, "species");
+                species.addToState(speciesId, id);
+                return send(200, species.getSpecies(speciesId));
+            }
+            const name = typeof data.name === "string" ? data.name.trim() : "";
+            if (!name) {
+                throw new HttpError(400, "A name is required");
+            }
+            return send(201, species.createSpecies(data.kind, name, data.rarity, id));
+        }
+        if (parts.length === 5 && method === "DELETE") {
+            species.removeFromState(parseInteger(rawSub, "species"), id);
+            return send(200, { ok: true });
         }
     }
 
