@@ -6,6 +6,7 @@ const { db } = require("../lib/db");
 const books = require("../lib/books");
 const { applyHidden } = require("../lib/visibility");
 const calendar = require("../lib/calendar");
+const eras = require("../lib/eras");
 const { excerpt } = require("../lib/html");
 const { HttpError, sendJson, readJson, parseInteger } = require("../lib/http");
 
@@ -125,6 +126,15 @@ function parseNote(data) {
 }
 
 module.exports = async function calendarRoutes(req, res, url) {
+    // PUT /api/eras  [{ name, sinographs, startYear, dynasty?, was? }]  -> the saved list
+    if (url.pathname === "/api/eras") {
+        if (req.method !== "PUT") {
+            throw new HttpError(405, "Method not allowed");
+        }
+        sendJson(res, 200, eras.saveEras(await readJson(req)));
+        return true;
+    }
+
     if (!url.pathname.startsWith("/api/notes")) {
         return false;
     }

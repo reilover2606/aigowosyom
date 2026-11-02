@@ -234,6 +234,104 @@
 		letter-spacing: -0.75px;
 	}
 
+	#dynastyTimeline {
+		margin: 25px 0 0;
+		overflow-x: auto;
+	}
+
+	#dynastyTimeline + #eraTimeline {
+		margin-top: 10px;
+	}
+
+	#dynastyTimeline .timeline-bar {
+		height: 40px;
+	}
+
+	#dynastyTimeline .era-segment {
+		background: #f3d9a4;
+	}
+
+	.era-segment.selected {
+		outline: 3px solid #1f6feb;
+		outline-offset: -3px;
+	}
+
+	.era-segment.interregnum {
+		opacity: 0.55;
+		cursor: pointer;
+	}
+
+	.era-segment.interregnum .era-segment-label {
+		font-style: italic;
+		font-weight: normal;
+	}
+
+	.edit-link {
+		margin-left: 1em;
+	}
+
+	#erasDialog {
+		width: min(960px, 96vw);
+		max-height: 92vh;
+	}
+
+	.eras-table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+
+	.eras-table th {
+		text-align: left;
+		font-size: 0.8em;
+		padding: 2px 4px;
+	}
+
+	.eras-table td {
+		padding: 2px 3px;
+	}
+
+	.eras-table input[type="text"],
+	.eras-table input[type="number"] {
+		width: 100%;
+		box-sizing: border-box;
+	}
+
+	.eras-table input[type="number"] {
+		width: 6.5em;
+	}
+
+	.eras-table tr.bad input {
+		outline: 2px solid #c0392b;
+	}
+
+	.eras-toolbar {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		align-items: center;
+		margin: 10px 0;
+	}
+
+	.eras-dynasties {
+		margin: 8px 0;
+		font-size: 0.9em;
+	}
+
+	.eras-dynasties span {
+		display: inline-block;
+		margin-right: 14px;
+	}
+
+	#erasError {
+		color: #c0392b;
+		min-height: 1.2em;
+	}
+
+	.eras-scroll {
+		max-height: 50vh;
+		overflow-y: auto;
+	}
+
 	.timeline-years {
 		display: flex;
 		justify-content: space-between;
@@ -660,10 +758,11 @@
     <label class="theme-switch"><span>Theme</span><select id="themeSelect" aria-label="Theme"></select></label>
 </nav>
 
-<p class="home-link"><a href="/">← Home</a></p>
+<p class="home-link"><a href="/">← Home</a><a class="edit-link editor-only" href="#" id="erasOpen">Edit eras and dynasties</a></p>
 
 <h1>Tanakōdeyam</h1>
 
+<div id="dynastyTimeline"></div>
 <div id="eraTimeline"></div>
 <div id="eraDisplay"></div>
 
@@ -711,6 +810,32 @@
         </div>
     </form>
     <button type="button" class="dialog-close" id="notesDialogClose">Close</button>
+</dialog>
+
+<dialog id="erasDialog">
+    <h2>Eras and dynasties</h2>
+    <p class="send-summary">An era runs until the next one begins. A dynasty runs from the start of its first era to the end of its last, so its eras must sit next to each other; eras with no dynasty make up an interregnum. Use the same dynasty name to put eras together.</p>
+    <div class="eras-toolbar">
+        <button type="button" id="erasAdd">Add era</button>
+        <span>Selected eras:</span>
+        <input type="text" id="erasGroupName" list="erasDynastyList" placeholder="Dynasty name" aria-label="Dynasty name">
+        <button type="button" id="erasGroup">Make a dynasty</button>
+        <button type="button" id="erasUngroup">Take out of dynasty</button>
+        <button type="button" id="erasDelete">Delete</button>
+    </div>
+    <datalist id="erasDynastyList"></datalist>
+    <div class="eras-scroll">
+        <table class="eras-table">
+            <thead><tr><th></th><th>Name</th><th>Sinographs</th><th>Starts (universal year)</th><th>Dynasty</th><th>Lasts</th></tr></thead>
+            <tbody id="erasRows"></tbody>
+        </table>
+    </div>
+    <div class="eras-dynasties" id="erasSummary"></div>
+    <div id="erasError" role="alert"></div>
+    <div class="note-form-buttons">
+        <button type="button" id="erasSave">Save</button>
+        <button type="button" id="erasClose">Cancel</button>
+    </div>
 </dialog>
 
 <dialog id="sendDialog">
@@ -842,7 +967,7 @@ const ERA_HORIZON_YEAR = 2049;
 // Load eras from the external JSON file.
 async function loadEraData() {
     try {
-        const response = await fetch("eras.json");
+        const response = await fetch("eras.json", { cache: "no-store" });
 
         if (!response.ok) {
             throw new Error("Could not load eras.json");
@@ -909,144 +1034,167 @@ function getErasForYear(year) {
 }
 
 
-function displayEraTimeline(year) {
-    const container = document.getElementById("eraTimeline");
-    container.innerHTML = "";
+// The eras gathered into dynasties and interregnums, in order. Each group is a
+// run of neighbouring eras with the same dynasty (or with none: an interregnum):
+//   { key, dynasty (name or null), eras, start, end }
+// `end` is the year the next era begins, or null for the last group.
+function eraGroups() {
+    const groups = [];
 
-    if (eras.length === 0) {
-        return;
-    }
+    eras.forEach((era, i) => {
+        const name = era.dynasty || null;
+        const last = groups[groups.length - 1];
 
-    /*
-     * The timeline extends from the beginning of the
-     * first era to the current universal year.
-     *
-     * If the selected year is later than the current
-     * year, extend the timeline to the selected year.
-     */
-    const currentUniversalYear = new Date().getFullYear();
+        if (last && last.dynasty === name) {
+            last.eras.push(era);
+        } else {
+            groups.push({ key: name || `~${era.startYear}`, dynasty: name, eras: [era], start: era.startYear, end: null });
+        }
 
-    const timelineEnd = Math.max(
-        2049,
-        year
-    );
+        if (eras[i + 1]) {
+            groups[groups.length - 1].end = eras[i + 1].startYear;
+        }
+    });
 
-    const timelineStart = eras[0].startYear;
+    // Only the last group is open-ended.
+    groups.forEach((group, i) => {
+        group.end = groups[i + 1] ? groups[i + 1].start : null;
+    });
 
-    // Don't draw anything if the requested range
-    // doesn't overlap the era system.
-    if (timelineEnd < timelineStart) {
-        return;
-    }
+    return groups;
+}
 
+let selectedGroupKey = null;
+
+// Draws a row of proportional segments.
+//   segments: [{ label, start, end, title, className, selected }]  (end exclusive)
+// `from`/`to` bound the row; a click moves to about where it landed.
+function drawTimelineBar(container, segments, from, to, endLabel) {
     const bar = document.createElement("div");
     bar.className = "timeline-bar";
 
-    for (let i = 0; i < eras.length; i++) {
-        const era = eras[i];
-
-        // The next era begins where this era ends.
-        // Because era boundaries overlap, the final
-        // year belongs to both eras. For proportional
-        // display, we treat the boundary as belonging
-        // to the following era.
-        const nextEra = eras[i + 1];
-
-        let eraEnd;
-
-        if (nextEra) {
-            eraEnd = nextEra.startYear;
-        } else {
-            // The final era is represented only up to
-            // the timeline's finite viewing horizon.
-            eraEnd = timelineEnd + 1;
-        }
-
-        const eraStart = Math.max(
-            era.startYear,
-            timelineStart
-        );
-
-        const visibleEnd = Math.min(
-            eraEnd,
-            timelineEnd + 1
-        );
-
-        const duration = visibleEnd - eraStart;
+    for (const item of segments) {
+        const start = Math.max(item.start, from);
+        const end = Math.min(item.end, to);
+        const duration = end - start;
 
         if (duration <= 0) {
             continue;
         }
 
         const segment = document.createElement("div");
-        segment.className = "era-segment";
-
-        /*
-         * Width is proportional to the number of
-         * universal years represented.
-         */
-        segment.style.flex = `${duration} 0 0`;
+        segment.className = "era-segment" + (item.className ? ` ${item.className}` : "") + (item.selected ? " selected" : "");
+        segment.style.flex = `${duration} 0 0`; // proportional to the universal years shown
+        segment.title = item.title;
 
         const label = document.createElement("div");
-        label.className = "era-segment-label conlang";
-        label.textContent = eraLabel(era);
-
+        label.className = "era-segment-label" + (item.plain ? "" : " conlang");
+        label.textContent = item.label;
         segment.appendChild(label);
 
-        /*
-         * Clicking the era takes you approximately
-         * to its beginning.
-         */
         segment.addEventListener("click", (event) => {
-			const rect = segment.getBoundingClientRect();
+            const rect = segment.getBoundingClientRect();
+            const position = (event.clientX - rect.left) / rect.width;
 
-			const position =
-				(event.clientX - rect.left) / rect.width;
-
-			const clickedYear =
-				Math.floor(
-					eraStart +
-					position * duration
-				);
-
-			document.getElementById("yearInput").value =
-				Math.max(1, clickedYear);
-
-			generateCalendar();
-
-			window.scrollTo({
-				top: 0,
-				behavior: "smooth"
-			});
-		});
-
-        segment.title =
-            `${eraLabel(era)}: Universal Year ${era.startYear}` +
-            (nextEra
-                ? `–${nextEra.startYear}`
-                : "–present");
+            document.getElementById("yearInput").value = Math.max(1, Math.floor(start + position * duration));
+            generateCalendar();
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        });
 
         bar.appendChild(segment);
     }
 
     container.appendChild(bar);
 
-    /*
-     * Add approximate universal-year markers.
-     */
-    const years = document.createElement("div");
-    years.className = "timeline-years";
+    if (endLabel !== null) {
+        const years = document.createElement("div");
+        years.className = "timeline-years";
 
-    const startLabel = document.createElement("span");
-    startLabel.textContent = timelineStart;
+        for (const text of [from, endLabel]) {
+            const mark = document.createElement("span");
+            mark.textContent = text;
+            years.appendChild(mark);
+        }
 
-    const endLabel = document.createElement("span");
-    endLabel.textContent = timelineEnd;
+        container.appendChild(years);
+    }
+}
 
-    years.appendChild(startLabel);
-    years.appendChild(endLabel);
+function displayEraTimeline(year) {
+    const dynastyContainer = document.getElementById("dynastyTimeline");
+    const container = document.getElementById("eraTimeline");
+    dynastyContainer.innerHTML = "";
+    container.innerHTML = "";
 
-    container.appendChild(years);
+    if (eras.length === 0) {
+        return;
+    }
+
+    // The timelines run to the end of the era system, or to the chosen year if later.
+    const timelineEnd = Math.max(2049, year) + 1; // exclusive
+    const timelineStart = eras[0].startYear;
+
+    if (timelineEnd <= timelineStart) {
+        return;
+    }
+
+    const groups = eraGroups();
+    const hasDynasties = eras.some((era) => era.dynasty);
+    const groupEnd = (group) => (group.end === null ? timelineEnd : group.end);
+
+    // The dynasty on show follows the year (a year before the first era keeps the last one).
+    const here = eraForYear(year);
+
+    if (here) {
+        selectedGroupKey = groups.find((group) => group.eras.includes(here.era)).key;
+    }
+    const selected = groups.find((group) => group.key === selectedGroupKey) || groups[0];
+
+    let shown = eras;
+    let from = timelineStart;
+    let to = timelineEnd;
+    let selectedClosed = false; // the shown range ends where another era begins
+
+    if (hasDynasties) {
+        drawTimelineBar(
+            dynastyContainer,
+            groups.map((group) => ({
+                label: group.dynasty || "Interregnum",
+                plain: !group.dynasty,
+                className: group.dynasty ? "" : "interregnum",
+                selected: group === selected,
+                start: group.start,
+                end: groupEnd(group),
+                title: `${group.dynasty ? `${group.dynasty} dynasty` : "Interregnum"}: Universal Year ${group.start}` +
+                    (group.end === null ? "–present" : `–${group.end}`)
+            })),
+            timelineStart,
+            timelineEnd,
+            null
+        );
+
+        shown = selected.eras;
+        from = selected.start;
+        to = groupEnd(selected);
+        selectedClosed = selected.end !== null;
+    }
+
+    drawTimelineBar(
+        container,
+        shown.map((era) => {
+            const next = eras[eras.indexOf(era) + 1];
+
+            return {
+                label: eraLabel(era),
+                start: era.startYear,
+                end: next ? next.startYear : timelineEnd,
+                title: `${eraLabel(era)}: Universal Year ${era.startYear}` + (next ? `–${next.startYear}` : "–present")
+            };
+        }),
+        from,
+        to,
+        selectedClosed ? to : to - 1
+    );
 }
 
 
@@ -1531,6 +1679,186 @@ document.getElementById("eraGo").addEventListener("click", goToEraYear);
 eraYearInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
         goToEraYear();
+    }
+});
+
+
+// ======================================================
+// EDITING ERAS AND DYNASTIES (editor only)
+// ======================================================
+
+const erasDialog = document.getElementById("erasDialog");
+const erasRows = document.getElementById("erasRows");
+const erasError = document.getElementById("erasError");
+let draft = []; // rows being edited: { name, sinographs, startYear, dynasty, was, picked }
+
+function renderEraRows() {
+    erasRows.replaceChildren();
+    const sorted = [...draft].sort((a, b) => (Number(a.startYear) || 0) - (Number(b.startYear) || 0));
+
+    sorted.forEach((row, i) => {
+        const next = sorted[i + 1];
+        const tr = document.createElement("tr");
+        const cell = (child) => {
+            const td = document.createElement("td");
+            td.appendChild(child);
+            tr.appendChild(td);
+        };
+        const field = (type, key, label, extra = {}) => {
+            const input = document.createElement("input");
+            input.type = type;
+            input.value = row[key] ?? "";
+            input.setAttribute("aria-label", label);
+            Object.assign(input, extra);
+            input.addEventListener("input", () => {
+                row[key] = input.value;
+                refreshEraSummary();
+            });
+            return input;
+        };
+
+        const pick = document.createElement("input");
+        pick.type = "checkbox";
+        pick.checked = !!row.picked;
+        pick.setAttribute("aria-label", "Select this era");
+        pick.addEventListener("change", () => { row.picked = pick.checked; });
+        cell(pick);
+
+        const name = field("text", "name", "Era name");
+        name.className = "conlang";
+        cell(name);
+        cell(field("text", "sinographs", "Sinographs"));
+        const start = field("number", "startYear", "Start year", { min: 1 });
+        // The order follows the years: re-sort when the box is left.
+        start.addEventListener("change", renderEraRows);
+        cell(start);
+        cell(field("text", "dynasty", "Dynasty", { placeholder: "(none)" }));
+        tr.lastChild.firstChild.setAttribute("list", "erasDynastyList");
+
+        const lasts = document.createElement("span");
+        const length = next && Number(next.startYear) && Number(row.startYear) ? Number(next.startYear) - Number(row.startYear) : null;
+        lasts.textContent = length === null ? (next ? "" : "to the present") : `${length} years`;
+        cell(lasts);
+
+        erasRows.appendChild(tr);
+    });
+
+    refreshEraSummary();
+}
+
+// The dynasty names offered while typing, and a line listing each dynasty's span.
+function refreshEraSummary() {
+    const list = [...draft].filter((r) => Number(r.startYear)).sort((a, b) => a.startYear - b.startYear);
+    const names = [...new Set(list.map((r) => (r.dynasty || "").trim()).filter(Boolean))];
+
+    document.getElementById("erasDynastyList").replaceChildren(...names.map((n) => new Option(n)));
+
+    const summary = document.getElementById("erasSummary");
+    summary.replaceChildren();
+
+    for (const name of names) {
+        const mine = list.filter((r) => (r.dynasty || "").trim() === name);
+        const last = mine[mine.length - 1];
+        const after = list[list.indexOf(last) + 1];
+        const span = document.createElement("span");
+        span.textContent = `${name}: ${mine[0].startYear}–${after ? after.startYear : "present"} (${mine.length} ${mine.length === 1 ? "era" : "eras"})`;
+        summary.appendChild(span);
+    }
+}
+
+function openErasEditor() {
+    draft = eras.map((era) => ({
+        name: era.name,
+        sinographs: era.sinographs || "",
+        startYear: era.startYear,
+        dynasty: era.dynasty || "",
+        was: era.startYear,
+        picked: false
+    }));
+    erasError.textContent = "";
+    renderEraRows();
+    erasDialog.showModal();
+}
+
+document.getElementById("erasOpen").addEventListener("click", (event) => {
+    event.preventDefault();
+    openErasEditor();
+});
+
+document.getElementById("erasAdd").addEventListener("click", () => {
+    const latest = Math.max(0, ...draft.map((r) => Number(r.startYear) || 0));
+    draft.push({ name: "", sinographs: "", startYear: latest + 1, dynasty: "", was: null, picked: false });
+    renderEraRows();
+    const names = erasRows.querySelectorAll('input[aria-label="Era name"]');
+    const blank = [...names].find((input) => !input.value);
+    if (blank) {
+        blank.focus();
+    }
+});
+
+function pickedRows() {
+    return draft.filter((r) => r.picked);
+}
+
+document.getElementById("erasGroup").addEventListener("click", () => {
+    const name = document.getElementById("erasGroupName").value.trim();
+
+    if (!name) {
+        erasError.textContent = "Type a name for the dynasty first.";
+        return;
+    }
+    if (pickedRows().length === 0) {
+        erasError.textContent = "Tick the eras that belong to it.";
+        return;
+    }
+
+    erasError.textContent = "";
+    pickedRows().forEach((r) => { r.dynasty = name; r.picked = false; });
+    renderEraRows();
+});
+
+document.getElementById("erasUngroup").addEventListener("click", () => {
+    pickedRows().forEach((r) => { r.dynasty = ""; r.picked = false; });
+    renderEraRows();
+});
+
+document.getElementById("erasDelete").addEventListener("click", () => {
+    const picked = pickedRows();
+
+    if (picked.length === 0) {
+        erasError.textContent = "Tick the eras to delete.";
+        return;
+    }
+    if (!confirm(`Delete ${picked.length === 1 ? "this era" : `these ${picked.length} eras`}? Its lore page stays, but is no longer tied to the calendar. Notes are not touched. (Nothing is final until you save.)`)) {
+        return;
+    }
+
+    draft = draft.filter((r) => !r.picked);
+    erasError.textContent = "";
+    renderEraRows();
+});
+
+document.getElementById("erasClose").addEventListener("click", () => erasDialog.close());
+
+document.getElementById("erasSave").addEventListener("click", async () => {
+    erasError.textContent = "";
+
+    try {
+        const saved = await api("PUT", "/api/eras", draft.map((r) => ({
+            name: r.name,
+            sinographs: r.sinographs,
+            startYear: r.startYear === "" ? null : Number(r.startYear),
+            dynasty: r.dynasty,
+            was: r.was
+        })));
+
+        eras = saved;
+        eras.sort((a, b) => a.startYear - b.startYear);
+        fillEraSelect(eraSelect);
+        erasDialog.close();
+        generateCalendar();
+    } catch (error) {
+        erasError.textContent = error.message;
     }
 });
 
