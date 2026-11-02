@@ -255,11 +255,11 @@
 	.timeline-wrap {
 		position: relative;
 		min-width: 600px;
-		padding-bottom: 18px;
+		padding-bottom: 38px;
 	}
 
 	.timeline-wrap.no-years {
-		padding-bottom: 38px;
+		padding-bottom: 58px;
 	}
 
 	.timeline-wrap .timeline-bar,
@@ -294,10 +294,17 @@
 		top: 22px;
 		transform: translateX(-50%);
 		padding: 0 4px;
-		font-size: 0.75em;
+		font-size: 0.85em;
 		font-weight: bold;
+		line-height: 1.2;
+		text-align: center;
 		white-space: nowrap;
 		font-variant-numeric: tabular-nums;
+	}
+
+	.dial-year .dial-greg {
+		font-size: 0.8em;
+		font-weight: normal;
 	}
 
 	.era-gap td {
@@ -509,6 +516,35 @@
 	/* Era + year controls under the Gregorian year box */
 	.era-controls {
 		margin-top: -12px;
+	}
+
+	/* The year pickers, with an arrow either side to step a year */
+	.year-nav {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 18px;
+	}
+
+	.year-nav-fields .controls:first-child {
+		margin-top: 15px;
+	}
+
+	.year-step {
+		font-size: 2.4em;
+		line-height: 1;
+		padding: 0 16px 6px;
+		min-width: 2.2em;
+	}
+
+	.print-control {
+		margin-top: 0;
+	}
+
+	@media print {
+		.year-nav {
+			display: none;
+		}
 	}
 
 	.era-controls select,
@@ -840,7 +876,7 @@
     <label class="theme-switch"><span>Theme</span><select id="themeSelect" aria-label="Theme"></select></label>
 </nav>
 
-<p class="home-link"><a href="/">← Home</a><a class="edit-link editor-only" href="#" id="erasOpen">Edit eras and dynasties</a></p>
+<p class="home-link"><a href="/">← Home</a><a class="edit-link editor-only" href="#" id="erasOpen">Edit eras and dynasties</a><a class="edit-link editor-only" href="#" id="bulkOpen" title="Move every note from one year to another">Move a year's notes</a></p>
 
 <h1>Tanakōdeyam</h1>
 
@@ -848,20 +884,25 @@
 <div id="eraTimeline"></div>
 <div id="eraDisplay"></div>
 
-<div class="controls">
-    <label for="yearInput">Universal year:</label>
-    <input type="number" id="yearInput" value="2026" min="1">
-    <button onclick="generateCalendar()">Jump</button>
-    <button onclick="window.print()">Print</button>
-    <button type="button" id="bulkOpen" class="editor-only" title="Move every note from one year to another">Move a year's notes…</button>
+<div class="year-nav">
+    <button type="button" class="year-step" id="yearPrev" aria-label="Previous year" title="Previous year">&#8249;</button>
+    <div class="year-nav-fields">
+        <div class="controls">
+            <label for="yearInput">Universal year:</label>
+            <input type="number" id="yearInput" value="2026" min="1">
+        </div>
+        <div class="controls era-controls">
+            <label for="eraSelect">Era:</label>
+            <select id="eraSelect"></select>
+            <label for="eraYearInput">Year:</label>
+            <input type="number" id="eraYearInput" min="1" value="1">
+        </div>
+    </div>
+    <button type="button" class="year-step" id="yearNext" aria-label="Next year" title="Next year">&#8250;</button>
 </div>
 
-<div class="controls era-controls">
-    <label for="eraSelect">Era:</label>
-    <select id="eraSelect"></select>
-    <label for="eraYearInput">Year:</label>
-    <input type="number" id="eraYearInput" min="1" value="1">
-    <button id="eraGo">Go</button>
+<div class="controls print-control">
+    <button onclick="window.print()">Print</button>
 </div>
 
 <div id="calendar"></div>
@@ -1199,6 +1240,10 @@ function drawTimelineBar(container, segments, from, to, endLabel) {
     tick.className = "dial-tick";
     const readout = document.createElement("div");
     readout.className = "dial-year";
+    const eraNumber = document.createElement("div");
+    const universal = document.createElement("div");
+    universal.className = "dial-greg";
+    readout.append(eraNumber, universal);
     dial.append(tick, readout);
     wrap.appendChild(dial);
 
@@ -1214,7 +1259,13 @@ function drawTimelineBar(container, segments, from, to, endLabel) {
 
         dial.style.left = `${event.clientX - wrapRect.left}px`;
         dial.style.top = `${barRect.bottom - wrapRect.top}px`;
-        readout.textContent = yearAt(event.clientX);
+        const year = yearAt(event.clientX);
+        const match = eraForYear(year);
+
+        // The year within its era on top, the calendar's own (Gregorian) year beneath.
+        eraNumber.textContent = match ? match.number : "";
+        eraNumber.hidden = !match;
+        universal.textContent = year;
         dial.classList.add("on");
     });
     bar.addEventListener("mouseleave", () => dial.classList.remove("on"));
@@ -1774,7 +1825,24 @@ const eraYearInput = document.getElementById("eraYearInput");
 // of re-reading the year (a year shared by two eras reads as the later one).
 let keepEraControls = false;
 
+const yearInput = document.getElementById("yearInput");
+
+// Shows a year at once.
+function goToYear(year) {
+    if (!Number.isInteger(year) || year < 1) {
+        return;
+    }
+
+    yearInput.value = year;
+    generateCalendar();
+}
+
 function goToEraYear() {
+    // An era chosen with no year yet starts at its year 1.
+    if (eraYearInput.value === "") {
+        eraYearInput.value = "1";
+    }
+
     const year = readEraYear(eraSelect, eraYearInput);
 
     if (year === null) {
@@ -1782,18 +1850,40 @@ function goToEraYear() {
         return;
     }
 
-    document.getElementById("yearInput").value = year;
+    yearInput.value = year;
     keepEraControls = true;
     generateCalendar();
     keepEraControls = false;
 }
 
-document.getElementById("eraGo").addEventListener("click", goToEraYear);
-eraYearInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-        goToEraYear();
-    }
-});
+// A box jumps as soon as it changes: the little up and down arrows (which fire
+// an input event with no typing behind it), or a number that is entered (on
+// Enter, or on leaving the box). Digits still being typed don't jump halfway.
+function jumpOnChange(box, jump) {
+    box.addEventListener("input", (event) => {
+        if (!event.inputType || event.inputType === "insertReplacementText") {
+            jump();
+        }
+    });
+    box.addEventListener("change", jump);
+    box.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            jump();
+        }
+    });
+}
+
+jumpOnChange(yearInput, () => goToYear(parseInt(yearInput.value, 10)));
+jumpOnChange(eraYearInput, goToEraYear);
+eraSelect.addEventListener("change", goToEraYear);
+
+function stepYear(by) {
+    const year = parseInt(yearInput.value, 10);
+    goToYear((Number.isInteger(year) ? year : 1) + by);
+}
+
+document.getElementById("yearPrev").addEventListener("click", () => stepYear(-1));
+document.getElementById("yearNext").addEventListener("click", () => stepYear(1));
 
 
 // ======================================================
