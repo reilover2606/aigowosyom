@@ -703,7 +703,7 @@ function entryPage(res, language, headword) {
                 body: `<main class="content" style="${langVars(language.display_color, language.ink)}">
     <p class="crumbs"><a href="/dictionary">Dictionary</a> › <a href="${languageUrl(language.slug)}">${esc(language.name)}</a></p>
     <h1>${esc(headword)}</h1>
-    <p>There is no entry for “${esc(headword)}” in ${esc(language.name)}.</p>
+    <p>There is no entry for “${esc(headword)}” in ${esc(language.name)}.${ifEditing(` <a href="/dictionary/editor?${new URLSearchParams({ new: "1", language: language.slug, headword })}">Create it in the editor</a>.`)}</p>
     ${
         suggestions.length
             ? `<p>Did you mean: ${suggestions

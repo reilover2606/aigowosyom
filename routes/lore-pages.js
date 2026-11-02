@@ -254,6 +254,7 @@ function articlePage(res, category, page) {
     <p class="crumbs"><a href="/lore">Lore</a> › <a href="${categoryUrl(category.slug)}">${esc(category.name)}</a></p>
     <div class="lore-layout">
         <article class="lore-article">
+            ${ifEditing(`<p class="page-actions"><a class="button-link small" href="/lore/editor?page=${page.id}" title="Open this page in the lore editor">${Icons.svg("edit")} Edit this page</a></p>`)}
             <h1>${esc(page.title)}</h1>
             <p class="lore-category">${langBadge(category.name, category.display_color, category.ink, categoryUrl(category.slug))}</p>
             ${eraSpan}
@@ -288,7 +289,7 @@ function missingPage(res, category, slug) {
     <p class="crumbs"><a href="/lore">Lore</a> › <a href="${categoryUrl(category.slug)}">${esc(category.name)}</a></p>
     <h1>${esc(slug)}</h1>
     <p>There is no page called “${esc(slug)}” in ${esc(category.name)}.</p>
-    <p>${ifEditing('<a href="/lore/editor">Create it in the editor</a> or ')}<a href="${categoryUrl(category.slug)}">${appConfig.PUBLIC ? "Browse" : "browse"} ${esc(category.name)}</a>.</p>
+    <p>${ifEditing(`<a href="/lore/editor?${new URLSearchParams({ new: "1", category: category.slug, title: slug.replace(/-/g, " ") })}">Create it in the editor</a> or `)}<a href="${categoryUrl(category.slug)}">${appConfig.PUBLIC ? "Browse" : "browse"} ${esc(category.name)}</a>.</p>
 </main>`
         })
     );
