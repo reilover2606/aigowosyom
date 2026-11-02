@@ -2022,6 +2022,11 @@
                         ? h("select", { onchange: (event) => { prosody.stress_mark = event.target.value; tryWord(); } },
                             ...marks.map((p) => h("option", { value: p.ipa, selected: prosody.stress_mark === p.ipa }, `${p.ipa}  ${p.label || p.kind}`)))
                         : h("span", { class: "hint" }, "Add ˈ (or a tone) under Sounds, Tones and stress first.")),
+                h("div", { class: "field" },
+                    h("label", {}, "Articles in inflected forms", h("span", { class: "hint" }, " — a form with a space in it (an article and a word) is read as separate words, each with its own syllables; stress goes on the word itself and the article is left unstressed")),
+                    h("select", { onchange: (event) => { prosody.article_position = event.target.value; tryWord(); } },
+                        h("option", { value: "before", selected: prosody.article_position !== "after" }, "The article comes before the word (the last word is stressed)"),
+                        h("option", { value: "after", selected: prosody.article_position === "after" }, "The article comes after the word (the first word is stressed)"))),
                 h("div", { class: "field check" },
                     h("input", { type: "checkbox", id: "skip-mono", checked: prosody.skip_monosyllables !== 0, onchange: (event) => { prosody.skip_monosyllables = event.target.checked ? 1 : 0; tryWord(); } }),
                     h("label", { for: "skip-mono" }, "Leave one-syllable words unmarked")),
@@ -2075,12 +2080,42 @@
     // Start
     // ------------------------------------------------------
 
+    // A red link in editor mode lands here: ?new=1&language=<slug>&headword=<word> starts that entry.
+    async function followLink() {
+        const params = new URLSearchParams(location.search);
+        if (![...params.keys()].length) {
+            return;
+        }
+        history.replaceState(null, "", location.pathname); // so a reload doesn't start it again
+
+        const language = state.languages.find((l) => l.slug === params.get("language"));
+        if (!language) {
+            return;
+        }
+        if (language.id !== state.languageId) {
+            await selectLanguage(language.id);
+        }
+        const headword = (params.get("headword") || "").trim();
+        if (params.get("new") && headword) {
+            state.draft = emptyDraft();
+            state.draft.headword = headword;
+            state.dirty = false;
+            renderList();
+            renderForm();
+            const pos = formEl.querySelector("[name=pos]");
+            if (pos) {
+                pos.focus();
+            }
+        }
+    }
+
     (async () => {
         try {
             await loadLanguages();
             const remembered = recall();
             const initial = state.languages.find((l) => l.id === remembered) || state.languages[0];
             await selectLanguage(initial ? initial.id : null);
+            await followLink();
         } catch (error) {
             root.textContent = `Could not load the editor: ${error.message}`;
         }

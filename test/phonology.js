@@ -300,4 +300,22 @@ check("diphthongs are single sounds, whole syllables that go are one event, and 
     assert.ok(swap && swap.processes[0].startsWith("metathesis"));
 });
 
+check("a form with a space is read word by word: the article is unstressed and the spaces stay", () => {
+    const lang = dict.createLanguage({ slug: "art", name: "Art" });
+    const inv = ["k", "t", "l", "s", "a", "i", "o", "ˈ"];
+    const set = (prosody) => phon.savePhonology(lang.id, {
+        phonemes: inv.map((ipa) => ({ ipa })),
+        graphemes: [...inv.filter((x) => x !== "ˈ").map((x) => ({ grapheme: x, ipa: x })), { grapheme: "'", ipa: "ˈ" }],
+        prosody: { show_syllables: true, stress_rule: "penultimate", ...prosody }
+    });
+    set({});
+    assert.strictEqual(phon.transcribe(lang.id, "kasita").surface, "/kaˈsi.ta/");
+    assert.strictEqual(phon.transcribe(lang.id, "la kasita").surface, "/la kaˈsi.ta/", "the article gets no stress, though it has two syllables");
+    assert.strictEqual(phon.transcribe(lang.id, "ta lo kasita").surface, "/ta lo kaˈsi.ta/");
+    assert.strictEqual(phon.transcribe(lang.id, "la ka'sita").surface, "/la kaˈsi.ta/", "stress written in the spelling still counts");
+    assert.ok(!phon.transcribe(lang.id, "la kazita").complete, "an uncovered letter makes the whole form incomplete");
+    set({ article_position: "after" });
+    assert.strictEqual(phon.transcribe(lang.id, "kasita la").surface, "/kaˈsi.ta la/", "an article after the word: the first word is the stressed one");
+});
+
 console.log(`\n${passed} checks passed`);

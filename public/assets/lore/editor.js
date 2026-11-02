@@ -1102,7 +1102,8 @@
     // Category dialog
     // ------------------------------------------------------
 
-    function openCategoryDialog(category) {
+    // `prefill` (for a new category): { name, slug, then } where `then(saved)` runs once it is saved.
+    function openCategoryDialog(category, prefill = {}) {
         const editing = Boolean(category);
         const builtIn = Boolean(category && category.system_key);
         let slugTouched = editing;
@@ -1110,7 +1111,7 @@
         const nameInput = h("input", {
             type: "text",
             disabled: builtIn,
-            value: category ? category.name : "",
+            value: category ? category.name : prefill.name || "",
             oninput: () => {
                 if (!slugTouched) {
                     slugInput.value = slugify(nameInput.value);
@@ -1121,7 +1122,7 @@
         const slugInput = h("input", {
             type: "text",
             disabled: builtIn,
-            value: category ? category.slug : "",
+            value: category ? category.slug : prefill.slug || "",
             oninput: () => { slugTouched = true; }
         });
         const descriptionInput = h("textarea", { value: category && category.description ? category.description : "" });
@@ -1203,6 +1204,9 @@
                                 renderCategorySelect();
                                 renderForm();
                             }
+                            if (prefill.then) {
+                                await prefill.then(saved);
+                            }
                         } catch (error) {
                             errorEl.textContent = error.message;
                         }
@@ -1243,12 +1247,65 @@
     // Start
     // ------------------------------------------------------
 
+    // A new page ready to be written, with its title already in (from a red link).
+    function startPage(title) {
+        state.draft = emptyDraft();
+        state.draft.title = title;
+        state.draft.slug = slugify(title);
+        state.dirty = false;
+        renderList();
+        renderForm();
+    }
+
+    // Links into the editor: ?page=<id> opens a page; ?new=1&category=<slug>&title=<title> starts a page (a red
+    // link); ?category_name=<name> starts a new category. A category that doesn't exist yet is offered first.
+    async function followLink() {
+        const params = new URLSearchParams(location.search);
+        if (![...params.keys()].length) {
+            return false;
+        }
+        history.replaceState(null, "", location.pathname); // so a reload doesn't start it again
+
+        const pageId = Number(params.get("page"));
+        if (pageId) {
+            const page = await api("GET", `/api/lore/pages/${pageId}`);
+            await selectCategory(page.category_id);
+            await openPage(pageId);
+            return true;
+        }
+
+        const title = (params.get("title") || "").trim();
+        const slug = (params.get("category") || "").trim();
+        const found = state.categories.find((c) => c.slug === slug);
+        if (found) {
+            await selectCategory(found.id);
+            if (title) {
+                startPage(title);
+            }
+            return true;
+        }
+
+        const name = (params.get("category_name") || "").trim();
+        if (name || slug) {
+            const initial = state.categories.find((c) => c.id === (Number(load("lore.categoryId")) || null)) || state.categories[0];
+            await selectCategory(initial ? initial.id : null);
+            openCategoryDialog(null, {
+                name: name || slug,
+                slug: slugify(name || slug),
+                then: async () => { if (title) { startPage(title); } }
+            });
+            return true;
+        }
+        return false;
+    }
+
     (async () => {
         try {
             await loadCategories();
             const remembered = Number(load("lore.categoryId")) || null;
             const initial = state.categories.find((c) => c.id === remembered) || state.categories[0];
             await selectCategory(initial ? initial.id : null);
+            await followLink().catch((error) => setStatus(error.message, "error"));
         } catch (error) {
             root.textContent = `Could not load the editor: ${error.message}`;
         }
