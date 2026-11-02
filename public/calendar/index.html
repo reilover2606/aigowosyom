@@ -247,8 +247,90 @@
 		height: 40px;
 	}
 
-	#dynastyTimeline .era-segment {
+	.era-segment.dynasty-segment {
 		background: #f3d9a4;
+	}
+
+	/* The year dial: a tick under the bar that follows the pointer, with the year beneath it */
+	.timeline-wrap {
+		position: relative;
+		min-width: 600px;
+		padding-bottom: 18px;
+	}
+
+	.timeline-wrap.no-years {
+		padding-bottom: 38px;
+	}
+
+	.timeline-wrap .timeline-bar,
+	.timeline-wrap .timeline-years {
+		min-width: 0;
+	}
+
+	.dial {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 0;
+		pointer-events: none;
+		visibility: hidden;
+		z-index: 2;
+	}
+
+	.dial.on {
+		visibility: visible;
+	}
+
+	.dial-tick {
+		position: absolute;
+		left: -1px;
+		width: 2px;
+		height: 22px;
+		background: currentColor;
+	}
+
+	.dial-year {
+		position: absolute;
+		top: 22px;
+		transform: translateX(-50%);
+		padding: 0 4px;
+		font-size: 0.75em;
+		font-weight: bold;
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.era-gap td {
+		padding: 0;
+	}
+
+	.era-gap button {
+		display: block;
+		width: 100%;
+		height: 7px;
+		padding: 0;
+		margin: 1px 0;
+		border: 0;
+		border-radius: 3px;
+		background: transparent;
+		color: transparent;
+		font-size: 0.75em;
+		line-height: 1;
+		cursor: pointer;
+		overflow: hidden;
+		box-shadow: none;
+		transition: height 0.1s;
+	}
+
+	.era-gap button:hover,
+	.era-gap button:focus-visible {
+		height: 20px;
+		background: #dbeafe;
+		color: #1f4f99;
+	}
+
+	.eras-table input[type="text"].eras-sino {
+		width: 5em;
 	}
 
 	.era-segment.selected {
@@ -1070,6 +1152,10 @@ let selectedGroupKey = null;
 //   segments: [{ label, start, end, title, className, selected }]  (end exclusive)
 // `from`/`to` bound the row; a click moves to about where it landed.
 function drawTimelineBar(container, segments, from, to, endLabel) {
+    const wrap = document.createElement("div");
+    wrap.className = "timeline-wrap" + (endLabel === null ? " no-years" : "");
+    container.appendChild(wrap);
+
     const bar = document.createElement("div");
     bar.className = "timeline-bar";
 
@@ -1104,7 +1190,34 @@ function drawTimelineBar(container, segments, from, to, endLabel) {
         bar.appendChild(segment);
     }
 
-    container.appendChild(bar);
+    wrap.appendChild(bar);
+
+    // The dial: follows the pointer along the bar and reads out the year under it.
+    const dial = document.createElement("div");
+    dial.className = "dial";
+    const tick = document.createElement("div");
+    tick.className = "dial-tick";
+    const readout = document.createElement("div");
+    readout.className = "dial-year";
+    dial.append(tick, readout);
+    wrap.appendChild(dial);
+
+    const yearAt = (clientX) => {
+        const rect = bar.getBoundingClientRect();
+        const position = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+        return Math.min(to - 1, Math.max(from, Math.floor(from + position * (to - from))));
+    };
+
+    bar.addEventListener("mousemove", (event) => {
+        const wrapRect = wrap.getBoundingClientRect();
+        const barRect = bar.getBoundingClientRect();
+
+        dial.style.left = `${event.clientX - wrapRect.left}px`;
+        dial.style.top = `${barRect.bottom - wrapRect.top}px`;
+        readout.textContent = yearAt(event.clientX);
+        dial.classList.add("on");
+    });
+    bar.addEventListener("mouseleave", () => dial.classList.remove("on"));
 
     if (endLabel !== null) {
         const years = document.createElement("div");
@@ -1116,7 +1229,7 @@ function drawTimelineBar(container, segments, from, to, endLabel) {
             years.appendChild(mark);
         }
 
-        container.appendChild(years);
+        wrap.appendChild(years);
     }
 }
 
@@ -1161,7 +1274,7 @@ function displayEraTimeline(year) {
             groups.map((group) => ({
                 label: group.dynasty || "Interregnum",
                 plain: !group.dynasty,
-                className: group.dynasty ? "" : "interregnum",
+                className: group.dynasty ? "dynasty-segment" : "dynasty-segment interregnum",
                 selected: group === selected,
                 start: group.start,
                 end: groupEnd(group),
@@ -1696,7 +1809,24 @@ function renderEraRows() {
     erasRows.replaceChildren();
     const sorted = [...draft].sort((a, b) => (Number(a.startYear) || 0) - (Number(b.startYear) || 0));
 
+    // A thin strip between rows (and above and below them) that adds an era there.
+    const gap = (index) => {
+        const tr = document.createElement("tr");
+        tr.className = "era-gap";
+        const td = document.createElement("td");
+        td.colSpan = 6;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "+ Add an era here";
+        button.title = "Add an era here";
+        button.addEventListener("click", () => insertEraAt(sorted, index));
+        td.appendChild(button);
+        tr.appendChild(td);
+        erasRows.appendChild(tr);
+    };
+
     sorted.forEach((row, i) => {
+        gap(i);
         const next = sorted[i + 1];
         const tr = document.createElement("tr");
         const cell = (child) => {
@@ -1727,7 +1857,9 @@ function renderEraRows() {
         const name = field("text", "name", "Era name");
         name.className = "conlang";
         cell(name);
-        cell(field("text", "sinographs", "Sinographs"));
+        const sino = field("text", "sinographs", "Sinographs", { maxLength: 8 });
+        sino.className = "eras-sino";
+        cell(sino);
         const start = field("number", "startYear", "Start year", { min: 1 });
         // The order follows the years: re-sort when the box is left.
         start.addEventListener("change", renderEraRows);
@@ -1743,7 +1875,47 @@ function renderEraRows() {
         erasRows.appendChild(tr);
     });
 
+    gap(sorted.length);
     refreshEraSummary();
+}
+
+// Adds an era at position `index` of the ordered rows: a year between its
+// neighbours (or the usual spacing beyond the ends), in their dynasty when
+// both neighbours share one (a dynasty's eras must stay together).
+function insertEraAt(sorted, index) {
+    const before = sorted[index - 1];
+    const after = sorted[index];
+    const year = (row) => Number(row && row.startYear) || 0;
+    let start;
+
+    if (before && after) {
+        start = Math.floor((year(before) + year(after)) / 2);
+    } else if (after) {
+        const next = sorted[1];
+        start = Math.max(1, year(after) - (next ? year(next) - year(after) : 10));
+    } else if (before) {
+        const earlier = sorted[sorted.length - 2];
+        start = year(before) + (earlier ? year(before) - year(earlier) : 10);
+    } else {
+        start = 1;
+    }
+
+    const dynasty = before && after && (before.dynasty || "").trim() === (after.dynasty || "").trim()
+        ? (before.dynasty || "").trim()
+        : "";
+    const row = { name: "", sinographs: "", startYear: start, dynasty, was: null, picked: false };
+
+    draft.push(row);
+    renderEraRows();
+    erasError.textContent = "";
+
+    const names = [...erasRows.querySelectorAll('input[aria-label="Era name"]')];
+    const at = [...draft].sort((a, b) => year(a) - year(b)).indexOf(row);
+    const box = names[at] || names[names.length - 1];
+    if (box) {
+        box.scrollIntoView({ block: "nearest" });
+        box.focus();
+    }
 }
 
 // The dynasty names offered while typing, and a line listing each dynasty's span.
@@ -1786,14 +1958,8 @@ document.getElementById("erasOpen").addEventListener("click", (event) => {
 });
 
 document.getElementById("erasAdd").addEventListener("click", () => {
-    const latest = Math.max(0, ...draft.map((r) => Number(r.startYear) || 0));
-    draft.push({ name: "", sinographs: "", startYear: latest + 1, dynasty: "", was: null, picked: false });
-    renderEraRows();
-    const names = erasRows.querySelectorAll('input[aria-label="Era name"]');
-    const blank = [...names].find((input) => !input.value);
-    if (blank) {
-        blank.focus();
-    }
+    const ordered = [...draft].sort((x, y) => (Number(x.startYear) || 0) - (Number(y.startYear) || 0));
+    insertEraAt(ordered, ordered.length);
 });
 
 function pickedRows() {
