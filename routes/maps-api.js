@@ -170,7 +170,7 @@ module.exports = async function mapsApi(req, res, url) {
     }
 
     // ---- Flora and fauna (lib/species.js) ----
-    // GET  /api/species                              every species (flora, then fauna), with how many states
+    // GET  /api/species?q=&except_state=&limit=      species by name (names starting with q first), flora and fauna
     // GET  /api/map-states/:id/species               { direct: found in the state, with the rarity there,
     //                                                  clients: found in the states under it }
     // POST /api/map-states/:id/species { kind, name, rarity }          a new species, found in this state
@@ -178,7 +178,11 @@ module.exports = async function mapsApi(req, res, url) {
     // PUT  /api/map-states/:id/species/:speciesId { rarity }           how rare it is in this state
     // DELETE /api/map-states/:id/species/:speciesId                    no longer found there
     if (resource === "species" && parts.length === 2 && method === "GET") {
-        return send(200, species.listSpecies());
+        const q = url.searchParams;
+        return send(200, species.searchSpecies(q.get("q"), {
+            exceptState: q.get("except_state") ? parseInteger(q.get("except_state"), "state") : null,
+            limit: q.get("limit") ? parseInteger(q.get("limit"), "limit") : 30
+        }));
     }
 
     if (resource === "map-states" && sub === "species") {

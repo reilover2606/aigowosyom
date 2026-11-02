@@ -624,3 +624,47 @@ details.clients > summary {
 .species-list .rarity-select {
     font-size: 0.85em;
 }
+
+/* The search for existing flora and fauna */
+dialog.species-dialog {
+    width: min(520px, 94vw);
+}
+
+.species-results {
+    list-style: none;
+    margin: 0 0 10px;
+    padding: 0;
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid var(--border, #c8ccd1);
+    border-radius: 6px;
+}
+
+.species-results li button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 0;
+    background: none;
+    cursor: pointer;
+}
+
+.species-results li button:hover,
+.species-results li.chosen button {
+    background: var(--accent-soft, rgba(74, 124, 89, 0.15));
+}
+
+.species-results li.chosen button {
+    font-weight: bold;
+}
+
+.species-results li.none {
+    padding: 10px;
+    color: var(--muted, #54595d);
+}
+
+.species-results .species-kind {
+    margin-left: 4px;
+}

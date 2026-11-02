@@ -141,38 +141,91 @@
             });
         }
 
-        async function addExisting() {
-            const [all, here] = await Promise.all([api("GET", "/api/species"), api("GET", `/api/map-states/${stateRow.id}/species`)]).catch((error) => {
-                say(error.message, "error");
-                return [null, null];
-            });
-            if (!all) {
-                return;
-            }
-            const taken = new Set(here.direct.map((sp) => sp.id));
-            const available = all.filter((sp) => !taken.has(sp.id));
-            if (!available.length) {
-                say(all.length ? `Everything recorded is already found in ${stateRow.name}.` : "There is no flora or fauna yet. Make some with New flora or New fauna.", "error");
-                return;
-            }
-            const answer = await ask({
-                title: `Add to ${stateRow.name}`,
-                okLabel: "Add",
-                fields: [
-                    {
-                        key: "species", label: "Flora or fauna", type: "select", value: available[0].id,
-                        options: available.map((sp) => [sp.id, `${sp.kind === "flora" ? "Flora" : "Fauna"}: ${sp.title}`])
-                    },
-                    { key: "rarity", label: `Rarity in ${stateRow.name}`, type: "select", options: RARITY_OPTIONS, value: 3 }
-                ]
-            });
-            if (!answer) {
-                return;
-            }
-            await guarded(async () => {
-                const added = await api("POST", `/api/map-states/${stateRow.id}/species`, { species_id: Number(answer.species), rarity: Number(answer.rarity) });
-                await render();
-                say(`“${added.title}” is now found in ${stateRow.name}.`);
+        // A search over every species (names that start with what is typed come first), flora and fauna marked
+        // by a badge after the name; pick one, say how rare it is in this state, and add it.
+        function addExisting() {
+            return new Promise((resolve) => {
+                let chosen = null;
+                let timer = null;
+                let ticket = 0;
+                const input = h("input", { type: "search", placeholder: "Search flora and fauna by name…", autocomplete: "off", "aria-label": "Search flora and fauna" });
+                const results = h("ul", { class: "species-results", role: "listbox" });
+                const picked = h("p", { class: "hint" }, "Choose one from the results.");
+                const rarity = h("select", { "aria-label": `Rarity in ${stateRow.name}` },
+                    ...RARITY_OPTIONS.map(([n, label]) => h("option", { value: String(n), selected: n === 3 }, label)));
+                const errorEl = h("div", { class: "status error" });
+                const addButton = h("button", { type: "button", class: "primary", disabled: true }, "Add");
+
+                const choose = (sp) => {
+                    chosen = sp;
+                    addButton.disabled = false;
+                    put(picked, h("strong", {}, sp.title), " ", h("span", { class: `species-kind ${sp.kind}` }, sp.kind === "flora" ? "Flora" : "Fauna"), ` — how rare is it in ${stateRow.name}?`);
+                    for (const li of results.children) {
+                        li.classList.toggle("chosen", li.dataset.id === String(sp.id));
+                    }
+                };
+
+                async function search() {
+                    const mine = ++ticket;
+                    try {
+                        const found = await api("GET", `/api/species?q=${encodeURIComponent(input.value.trim())}&except_state=${stateRow.id}&limit=40`);
+                        if (mine !== ticket) {
+                            return;
+                        }
+                        put(results, found.length
+                            ? found.map((sp) => h("li", { "data-id": String(sp.id), role: "option" },
+                                h("button", { type: "button", onclick: () => choose(sp) },
+                                    h("span", { class: "name" }, sp.title), " ",
+                                    h("span", { class: `species-kind ${sp.kind}` }, sp.kind === "flora" ? "Flora" : "Fauna"),
+                                    h("span", { class: "hint" }, ` found in ${sp.states} state${sp.states === 1 ? "" : "s"}`))))
+                            : h("li", { class: "none" }, input.value.trim() ? "No flora or fauna matches that (or it is already found in this state)." : "There is no flora or fauna to add yet: make some with New flora or New fauna."));
+                        if (chosen) {
+                            choose(chosen);
+                        }
+                    } catch (error) {
+                        errorEl.textContent = error.message;
+                    }
+                }
+
+                const dialog = h("dialog", { class: "species-dialog" },
+                    h("h2", {}, `Add flora or fauna to ${stateRow.name}`),
+                    h("div", { class: "field" }, input),
+                    results,
+                    h("div", { class: "field" }, picked, rarity),
+                    errorEl,
+                    h("div", { class: "form-actions" },
+                        addButton,
+                        h("button", { type: "button", onclick: () => dialog.close() }, "Cancel")));
+
+                input.addEventListener("input", () => {
+                    clearTimeout(timer);
+                    timer = setTimeout(search, 150);
+                });
+                input.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter") {
+                        event.preventDefault();
+                        const first = results.querySelector("button");
+                        if (first && !chosen) {
+                            first.click();
+                        } else if (chosen) {
+                            addButton.click();
+                        }
+                    }
+                });
+                addButton.addEventListener("click", () => guarded(async () => {
+                    const added = await api("POST", `/api/map-states/${stateRow.id}/species`, { species_id: chosen.id, rarity: Number(rarity.value) });
+                    dialog.close();
+                    await render();
+                    say(`“${added.title}” is now found in ${stateRow.name}.`);
+                }));
+                dialog.addEventListener("close", () => {
+                    dialog.remove();
+                    resolve();
+                });
+                document.body.append(dialog);
+                dialog.showModal();
+                input.focus();
+                search();
             });
         }
 
