@@ -801,7 +801,6 @@
             hidden: false,
             era: null,
             book: null,
-            rarity: 3,
             speciesStates: []
         };
     }
@@ -819,12 +818,9 @@
             hidden: Boolean(page.hidden),
             era: page.era || null,
             book: page.book || null,
-            rarity: page.species ? page.species.rarity : 3,
             speciesStates: page.species ? page.species.states : []
         };
     }
-
-    const RARITY = [[1, "common"], [2, "fairly common"], [3, "uncommon"], [4, "rare"], [5, "extremely rare"]];
 
     function newPage() {
         if (!confirmDiscard()) {
@@ -952,14 +948,7 @@
                     titleInput),
                 h("div", { class: "field" }, h("label", {}, "Category"), moveSelect)
             ),
-            ["flora", "fauna"].includes(draftCategory.system_key)
-                ? h("div", { class: "field" },
-                    h("label", {}, "Rarity", h("span", { class: "hint" }, " — 1 is common, 5 is extremely rare")),
-                    h("select", {
-                        "aria-label": "Rarity",
-                        onchange: (event) => { draft.rarity = Number(event.target.value); markDirty(); }
-                    }, ...RARITY.map(([n, label]) => h("option", { value: String(n), selected: n === draft.rarity }, `${n}: ${label}`))))
-                : null,
+
             h("div", { class: "field" },
                 h("label", {}, "URL name (slug)", urlPreview),
                 slugInput),
@@ -984,10 +973,10 @@
 
             ["flora", "fauna"].includes(draftCategory.system_key)
                 ? h("div", { class: "field" },
-                    h("span", { class: "label" }, "Found in", h("span", { class: "hint" }, " — set on the map: select a state in the map editor and add this species under Flora and fauna")),
+                    h("span", { class: "label" }, "Found in", h("span", { class: "hint" }, " — set on the map: select a state in the map editor and add this species under Flora and fauna, with how rare it is there")),
                     draft.speciesStates.length
                         ? h("ul", { class: "species-state-list" }, ...draft.speciesStates.map((s) => h("li", {},
-                            h("a", { href: s.url, target: "_blank" }, s.name), h("span", { class: "hint" }, ` — ${s.map_name}${s.is_group ? ", superstate" : ""}`))))
+                            h("a", { href: s.url, target: "_blank" }, s.name), h("span", { class: "hint" }, ` — ${s.map_name}${s.is_group ? ", superstate" : ""}; ${s.rarity_label} (${s.rarity})`))))
                         : h("p", { class: "hint-block" }, "Not found in any state yet."))
                 : null,
 
@@ -1075,8 +1064,7 @@
             title: draft.title,
             slug: draft.slug,
             hidden: draft.hidden,
-            body: editor.getHtml(),
-            rarity: draft.rarity
+            body: editor.getHtml()
         };
 
         try {

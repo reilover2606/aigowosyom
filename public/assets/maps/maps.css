@@ -620,3 +620,7 @@ details.clients > summary {
 .species-list .small-button {
     margin-left: auto;
 }
+
+.species-list .rarity-select {
+    font-size: 0.85em;
+}

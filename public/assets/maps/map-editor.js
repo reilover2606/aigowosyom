@@ -73,25 +73,33 @@
 
     const RARITY_OPTIONS = [[1, "1: common"], [2, "2: fairly common"], [3, "3: uncommon"], [4, "4: rare"], [5, "5: extremely rare"]];
 
-    // The plants and animals found in the selected state: a species is a page in the Flora or Fauna lore category.
-    // New ones made here are found in this state at once; existing ones can be added, and taken out again.
+    // The plants and animals found in the selected state: a species is a page in the Flora or Fauna lore
+    // category, and how rare it is is set per state. New ones made here are found in this state at once;
+    // existing ones can be added, and taken out again. A superstate also shows what its clients have.
     function speciesSection(stateRow) {
         const box = h("div", { class: "species-box" });
 
         async function render() {
-            let found = [];
+            let direct = [];
+            let clients = [];
             try {
-                found = await api("GET", `/api/map-states/${stateRow.id}/species`);
+                ({ direct, clients } = await api("GET", `/api/map-states/${stateRow.id}/species`));
             } catch (error) {
                 say(error.message, "error");
             }
             put(box,
                 h("h4", {}, "Flora and fauna"),
-                found.length
-                    ? h("ul", { class: "species-list" }, ...found.map((sp) => h("li", {},
+                direct.length
+                    ? h("ul", { class: "species-list" }, ...direct.map((sp) => h("li", {},
                         h("span", { class: `species-kind ${sp.kind}` }, sp.kind === "flora" ? "Flora" : "Fauna"),
                         h("a", { href: `/lore/${sp.category_slug}/${sp.slug}`, target: "_blank", title: "Open its lore page" }, sp.title),
-                        h("span", { class: "hint" }, ` ${sp.rarity_label} (${sp.rarity})`),
+                        h("select", {
+                            class: "rarity-select", "aria-label": `How rare ${sp.title} is in ${stateRow.name}`, title: "How rare it is in this state",
+                            onchange: (event) => guarded(async () => {
+                                await api("PUT", `/api/map-states/${stateRow.id}/species/${sp.id}`, { rarity: Number(event.target.value) });
+                                say(`${sp.title} is now ${RARITY_OPTIONS[Number(event.target.value) - 1][1].replace(/^\d: /, "")} in ${stateRow.name}.`);
+                            })
+                        }, ...RARITY_OPTIONS.map(([n, label]) => h("option", { value: String(n), selected: n === sp.rarity }, label))),
                         h("button", {
                             type: "button", class: "small-button", title: `Not found in ${stateRow.name}`,
                             onclick: () => guarded(async () => {
@@ -99,7 +107,15 @@
                                 await render();
                             })
                         }, Icons.el("close")))))
-                    : h("p", { class: "hint" }, `No flora or fauna recorded in ${stateRow.name} yet.`),
+                    : h("p", { class: "hint" }, `No flora or fauna recorded in ${stateRow.name} itself yet.`),
+                clients.length
+                    ? h("details", { class: "clients", open: "" },
+                        h("summary", {}, `Found in its clients (${clients.length}, shown on its lore page automatically)`),
+                        h("ul", { class: "species-list" }, ...clients.map((sp) => h("li", {},
+                            h("span", { class: `species-kind ${sp.kind}` }, sp.kind === "flora" ? "Flora" : "Fauna"),
+                            h("a", { href: `/lore/${sp.category_slug}/${sp.slug}`, target: "_blank" }, sp.title),
+                            h("span", { class: "hint" }, ` ${sp.found.map((f) => `${f.state_name}: ${f.rarity_label}`).join(" · ")}`)))))
+                    : null,
                 h("div", { class: "row" },
                     h("button", { type: "button", onclick: () => create("flora") }, "New flora…"),
                     h("button", { type: "button", onclick: () => create("fauna") }, "New fauna…"),
@@ -112,7 +128,7 @@
                 okLabel: "Create",
                 fields: [
                     { key: "name", label: "Name", required: true, hint: `found in ${stateRow.name} from the start` },
-                    { key: "rarity", label: "Rarity", type: "select", options: RARITY_OPTIONS, value: 3 }
+                    { key: "rarity", label: `Rarity in ${stateRow.name}`, type: "select", options: RARITY_OPTIONS, value: 3 }
                 ]
             });
             if (!answer) {
@@ -133,7 +149,7 @@
             if (!all) {
                 return;
             }
-            const taken = new Set(here.map((sp) => sp.id));
+            const taken = new Set(here.direct.map((sp) => sp.id));
             const available = all.filter((sp) => !taken.has(sp.id));
             if (!available.length) {
                 say(all.length ? `Everything recorded is already found in ${stateRow.name}.` : "There is no flora or fauna yet. Make some with New flora or New fauna.", "error");
@@ -142,16 +158,19 @@
             const answer = await ask({
                 title: `Add to ${stateRow.name}`,
                 okLabel: "Add",
-                fields: [{
-                    key: "species", label: "Flora or fauna", type: "select", value: available[0].id,
-                    options: available.map((sp) => [sp.id, `${sp.kind === "flora" ? "Flora" : "Fauna"}: ${sp.title} (${sp.rarity_label})`])
-                }]
+                fields: [
+                    {
+                        key: "species", label: "Flora or fauna", type: "select", value: available[0].id,
+                        options: available.map((sp) => [sp.id, `${sp.kind === "flora" ? "Flora" : "Fauna"}: ${sp.title}`])
+                    },
+                    { key: "rarity", label: `Rarity in ${stateRow.name}`, type: "select", options: RARITY_OPTIONS, value: 3 }
+                ]
             });
             if (!answer) {
                 return;
             }
             await guarded(async () => {
-                const added = await api("POST", `/api/map-states/${stateRow.id}/species`, { species_id: Number(answer.species) });
+                const added = await api("POST", `/api/map-states/${stateRow.id}/species`, { species_id: Number(answer.species), rarity: Number(answer.rarity) });
                 await render();
                 say(`“${added.title}” is now found in ${stateRow.name}.`);
             });

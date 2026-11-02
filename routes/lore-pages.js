@@ -195,10 +195,10 @@ function bookNotesHtml(book) {
 // Rarity as five dots (filled = how rare) and its words.
 function rarityHtml(rarity) {
     const dots = [1, 2, 3, 4, 5].map((n) => `<span class="dot${n <= rarity ? " on" : ""}"></span>`).join("");
-    return `<span class="rarity" title="Rarity ${rarity} of 5">${dots}</span> ${esc(species.RARITY_LABELS[rarity])} <span class="muted">(${rarity} of 5)</span>`;
+    return `<span class="rarity" title="Rarity ${rarity} of 5">${dots}</span> ${esc(species.RARITY_LABELS[rarity])}`;
 }
 
-// Below a species' own text: the states where it is found (hard-coded, set on the map).
+// Below a species' own text: the states where it is found and how rare it is in each (hard-coded; set on the map).
 function speciesStatesHtml(found) {
     const states = species.statesOf(found.id);
     const byMap = new Map();
@@ -210,24 +210,49 @@ function speciesStatesHtml(found) {
     }
     const body = states.length
         ? [...byMap.values()].map((m) => `<h3><a href="/maps/${encodeURIComponent(m.slug)}">${esc(m.name)}</a></h3>
-            <ul>${m.states.map((s) => `<li><a href="${esc(s.url)}">${esc(s.name)}</a>${s.is_group ? ' <span class="muted">(superstate)</span>' : ""}</li>`).join("")}</ul>`).join("")
+            <ul class="species-found">${m.states.map((s) => `<li><a href="${esc(s.url)}">${esc(s.name)}</a>${s.is_group ? ' <span class="muted">(superstate)</span>' : ""}
+                <span class="species-rarity-note">${rarityHtml(s.rarity)}</span></li>`).join("")}</ul>`).join("")
         : `<p class="muted">Not found in any state yet.${ifEditing(" Add it to a state from the map editor: select the state and choose it under Flora and fauna.")}</p>`;
     return `<section class="species-states"><h2>Found in</h2>${body}</section>`;
 }
 
-// On a state's page: the flora and fauna found there.
-function stateSpeciesHtml(stateId) {
-    const found = species.speciesIn(stateId);
-    if (!found.length) {
+// On a state's page: the flora and fauna found there, and for a superstate those of its clients (and theirs),
+// with the state each is found in and how rare it is there.
+function stateSpeciesHtml(stateInfo) {
+    const own = species.speciesIn(stateInfo.id);
+    const fromClients = species.speciesInClients(stateInfo.id);
+    const merged = new Map();
+    const entry = (sp) => {
+        if (!merged.has(sp.id)) {
+            merged.set(sp.id, { id: sp.id, title: sp.title, slug: sp.slug, kind: sp.kind, category_slug: sp.category_slug, found: [] });
+        }
+        return merged.get(sp.id);
+    };
+    for (const sp of own) {
+        entry(sp).found.push({ name: stateInfo.name, rarity: sp.rarity, own: true });
+    }
+    for (const sp of fromClients) {
+        for (const f of sp.found) {
+            entry(sp).found.push({ name: f.state_name, rarity: f.rarity, own: false });
+        }
+    }
+    if (!merged.size) {
         return "";
     }
+
+    const aggregated = stateInfo.is_group;
     const list = (kind, title) => {
-        const items = found.filter((s) => s.kind === kind);
+        const items = [...merged.values()].filter((sp) => sp.kind === kind).sort((a, b) => Math.min(...a.found.map((f) => f.rarity)) - Math.min(...b.found.map((f) => f.rarity)) || a.title.localeCompare(b.title));
+        const note = (sp) => (aggregated
+            ? sp.found.map((f) => `${esc(f.name)}: ${esc(species.RARITY_LABELS[f.rarity])}`).join(" · ")
+            : esc(species.RARITY_LABELS[sp.found[0].rarity]));
         return items.length
-            ? `<h3>${title}</h3><ul>${items.map((s) => `<li><a href="/lore/${esc(s.category_slug)}/${esc(s.slug)}">${esc(s.title)}</a> <span class="muted">— ${esc(s.rarity_label)}</span></li>`).join("")}</ul>`
+            ? `<h3>${title}</h3><ul>${items.map((sp) => `<li><a href="/lore/${esc(sp.category_slug)}/${esc(sp.slug)}">${esc(sp.title)}</a> <span class="muted">— ${note(sp)}</span></li>`).join("")}</ul>`
             : "";
     };
-    return `<section class="state-species"><h2>Flora and fauna</h2>${list("flora", "Flora")}${list("fauna", "Fauna")}</section>`;
+    return `<section class="state-species"><h2>Flora and fauna</h2>
+        ${aggregated ? '<p class="muted">Found in this superstate and in its clients, with how rare each is in the state named.</p>' : ""}
+        ${list("flora", "Flora")}${list("fauna", "Fauna")}</section>`;
 }
 
 function articlePage(res, category, page) {
@@ -297,7 +322,6 @@ function articlePage(res, category, page) {
             ${ifEditing(`<p class="page-actions"><a class="button-link small" href="/lore/editor?page=${page.id}" title="Open this page in the lore editor">${Icons.svg("edit")} Edit this page</a></p>`)}
             <h1>${esc(page.title)}</h1>
             <p class="lore-category">${langBadge(category.name, category.display_color, category.ink, categoryUrl(category.slug))}</p>
-            ${speciesInfo ? `<p class="species-rarity">Rarity: ${rarityHtml(speciesInfo.rarity)}</p>` : ""}
             ${eraSpan}
             ${stateLine}
             ${dictionaryLinks}
@@ -311,8 +335,8 @@ function articlePage(res, category, page) {
             ${speciesInfo ? speciesStatesHtml(speciesInfo) : ""}
             ${era ? eraNotesHtml(era) : ""}
             ${clientsSection}
-            ${stateInfo ? stateSpeciesHtml(stateInfo.id) : ""}
             ${statsSection}
+            ${stateInfo ? stateSpeciesHtml(stateInfo) : ""}
             ${book ? bookNotesHtml(book) : ""}
         </article>
         ${aside}
