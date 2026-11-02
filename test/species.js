@@ -98,4 +98,33 @@ check("deleting a state or a species page removes the links, not the other", () 
     assert.deepStrictEqual(species.speciesIn(south.id), []);
 });
 
+check("a name can be used by only one species in Flora or Fauna", () => {
+    species.createSpecies("flora", "Dune grass", 1, south.id);
+    throws(() => species.createSpecies("flora", "dune GRASS", 2, south.id), "each species has one page");
+    throws(() => species.createSpecies("flora", "Dúne grass", 2, south.id), "each species has one page");
+    const flora = lore.listCategories().find((c) => c.slug === "flora");
+    throws(() => lore.savePage(null, { category_id: flora.id, title: "Dune grass", body: "" }), "each species has one page");
+    // renaming a page to a taken name is refused too, but keeping its own name is fine
+    const other = species.createSpecies("flora", "Sea kale", 3, south.id);
+    throws(() => lore.savePage(other.id, { title: "Dune grass", body: "" }), "each species has one page");
+    lore.savePage(other.id, { title: "Sea kale", body: "new text" });
+    // a plant and an animal may share a name; other categories are not restricted
+    species.createSpecies("fauna", "Dune grass", 3, south.id);
+    const places = lore.listCategories().find((c) => c.slug !== "flora" && c.slug !== "fauna");
+    lore.savePage(null, { category_id: places.id, title: "Same", body: "" });
+    lore.savePage(null, { category_id: places.id, title: "Same", body: "" });
+});
+
+check("species can be searched by name, names that start with the text first, leaving out those already in a state", () => {
+    species.createSpecies("fauna", "Grass snake", 2, south.id);
+    const names = (found) => found.map((s) => `${s.title}:${s.kind}`);
+    assert.deepStrictEqual(names(species.searchSpecies("grass")), ["Grass snake:fauna", "Dune grass:flora", "Dune grass:fauna"]);
+    assert.deepStrictEqual(names(species.searchSpecies("DÚNE")), ["Dune grass:flora", "Dune grass:fauna"], "accents and case are ignored");
+    assert.strictEqual(species.searchSpecies("").length >= 4, true, "no text lists them all");
+    assert.deepStrictEqual(species.searchSpecies("zzz"), []);
+    assert.deepStrictEqual(species.searchSpecies("100%"), [], "% and _ are plain characters");
+    assert.deepStrictEqual(species.searchSpecies("grass", { exceptState: south.id }), []);
+    assert.strictEqual(species.searchSpecies("", { limit: 2 }).length, 2);
+});
+
 console.log(`\n${passed} checks passed`);
