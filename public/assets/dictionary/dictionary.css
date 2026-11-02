@@ -1222,3 +1222,46 @@ button.danger {
     font-size: 0.8em;
     color: var(--muted, #54595d);
 }
+
+/* The inflected forms on an entry open and close. */
+details.inflected-forms {
+    margin: 12px 0;
+}
+
+details.inflected-forms > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+details.inflected-forms > summary::-webkit-details-marker {
+    display: none;
+}
+
+details.inflected-forms > summary::before {
+    content: "";
+    width: 0.55em;
+    height: 0.55em;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 0.15s;
+    flex: 0 0 auto;
+    align-self: center;
+}
+
+details.inflected-forms[open] > summary::before {
+    transform: rotate(45deg);
+}
+
+details.inflected-forms > summary > * {
+    margin: 0;
+}
+
+@media print {
+    details.inflected-forms:not([open]) > :not(summary) {
+        display: block;
+    }
+}

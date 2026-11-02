@@ -509,7 +509,7 @@ function statsPage(res, language) {
 // A template's layout as HTML: category values down the side (nested, a header cell spanning the rows it
 // covers) and across the top. `cell(key)` gives the HTML for the cell at a key; "own" marks a word's own
 // form. `paths` of the template's rows and columns give the order.
-function inflectionTableHtml(template, cell) {
+function inflectionTableHtml(template, cell, { caption = true } = {}) {
     const rowPaths = inflection.paths(template.rows);
     const colPaths = inflection.paths(template.cols);
     const R = template.rows.length;
@@ -548,7 +548,7 @@ function inflectionTableHtml(template, cell) {
     ].filter(Boolean).join(" · ");
 
     return `<div class="inflection-scroll"><table class="inflection-table">
-        ${names ? `<caption>${esc(names)}</caption>` : ""}
+        ${names && caption ? `<caption>${esc(names)}</caption>` : ""}
         <thead>${head}</thead>
         <tbody>${body}</tbody>
     </table></div>`;
@@ -571,9 +571,9 @@ function wordInflectionHtml(entry, word, language, headingTag) {
         return `<td class="${c.source === "own" ? "own" : ""}"><span class="conlang" lang="${esc(language.slug)}">${esc(c.form)}</span>${
             spoken && spoken.complete ? `<span class="ipa form-ipa">${esc(spoken.surface)}</span>` : ""
         }</td>`;
-    });
-    return `<${headingTag}>${esc(template.name)}${template.pos ? ` <span class="muted">(${esc(template.pos)})</span>` : ""}</${headingTag}>
-        ${template.description ? `<p class="muted">${esc(template.description)}</p>` : ""}${html}`;
+    }, { caption: false });
+    // The template's name and notes are for the editor; readers just see "Inflected forms", which opens and closes.
+    return `<details class="inflected-forms" open><summary><${headingTag}>Inflected forms</${headingTag}></summary>${html}</details>`;
 }
 
 function renderEntry(word, language, index, multiple) {
