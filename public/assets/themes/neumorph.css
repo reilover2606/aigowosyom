@@ -714,6 +714,30 @@ html[data-theme="neumorph"] .era-segment:hover {
     box-shadow: var(--np-pressed-xs);
 }
 
+/* The dynasty bar: the same raised segments, marked with a gold edge; the
+   dynasty on show is pressed in and ringed in the primary color. */
+html[data-theme="neumorph"] .era-segment.dynasty-segment {
+    background: var(--np-bg);
+    color: var(--np-accent-text);
+    border-bottom: 3px solid var(--np-accent);
+}
+
+html[data-theme="neumorph"] .era-segment.selected {
+    box-shadow: var(--np-pressed-xs);
+    outline: 2px solid var(--np-primary);
+    outline-offset: -2px;
+}
+
+html[data-theme="neumorph"] .era-segment.interregnum {
+    border-bottom-color: var(--np-shadow);
+}
+
+html[data-theme="neumorph"] .era-gap button:is(:hover, :focus-visible) {
+    background: var(--np-bg);
+    color: var(--np-primary);
+    box-shadow: var(--np-pressed-xs);
+}
+
 html[data-theme="neumorph"] .timeline-bar {
     gap: 3px;
 }

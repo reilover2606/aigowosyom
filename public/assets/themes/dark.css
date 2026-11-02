@@ -166,6 +166,9 @@ html[data-theme="default"][data-mode="dark"] .day.today { background-color: #6b5
 html[data-theme="default"][data-mode="dark"] .day.today .gregorian-date { color: #ffe9a0; }
 html[data-theme="default"][data-mode="dark"] .day[data-day]:hover { outline-color: #6aa37c; }
 html[data-theme="default"][data-mode="dark"] .era-segment { background: #2a4a63; border-right-color: var(--bg); }
+html[data-theme="default"][data-mode="dark"] .era-segment.dynasty-segment { background: #5a4a26; }
+html[data-theme="default"][data-mode="dark"] .era-segment.selected { outline-color: #6ea8fe; }
+html[data-theme="default"][data-mode="dark"] .era-gap button:is(:hover, :focus-visible) { background: #243a57; color: #bcd4ff; }
 html[data-theme="default"][data-mode="dark"] .note { background: #24292c; }
 html[data-theme="default"][data-mode="dark"] .note-menu-button { color: #b4bcc3; }
 html[data-theme="default"][data-mode="dark"] .note-menu-button[aria-expanded="true"] { background: #343a3f; border-color: var(--border); }
