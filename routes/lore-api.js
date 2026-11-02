@@ -37,10 +37,10 @@ function pageJson(id) {
         // Pages in the Books category are books: they carry their assigned notes.
         page.is_book = page.category_system_key === books.CATEGORY_KEY;
         page.book = page.is_book ? books.bookNotes(id) : null;
-        // Pages in Flora and Fauna are species: a rarity, and the states where it is found.
+        // Pages in Flora and Fauna are species: the states where it is found, and how rare it is in each.
         const kind = species.getSpecies(id);
         page.is_species = Boolean(kind);
-        page.species = kind ? { kind: kind.kind, rarity: kind.rarity, rarity_label: kind.rarity_label, states: species.statesOf(id) } : null;
+        page.species = kind ? { kind: kind.kind, states: species.statesOf(id) } : null;
     }
 
     return page;
@@ -123,9 +123,7 @@ module.exports = async function loreApi(req, res, url) {
 
         // POST /pages  { category_id, title, slug?, body }
         if (parts.length === 1 && method === "POST") {
-            const data = await readJson(req);
-            const id = lore.savePage(null, data);
-            species.afterPageSaved(id, data);
+            const id = lore.savePage(null, await readJson(req));
             sendJson(res, 201, pageJson(id));
             return true;
         }
@@ -143,9 +141,7 @@ module.exports = async function loreApi(req, res, url) {
             }
 
             if (method === "PUT") {
-                const data = await readJson(req);
-                lore.savePage(id, data);
-                species.afterPageSaved(id, data);
+                lore.savePage(id, await readJson(req));
                 sendJson(res, 200, pageJson(id));
                 return true;
             }

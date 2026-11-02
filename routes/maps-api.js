@@ -171,30 +171,25 @@ module.exports = async function mapsApi(req, res, url) {
 
     // ---- Flora and fauna (lib/species.js) ----
     // GET  /api/species                              every species (flora, then fauna), with how many states
-    // PUT  /api/species/:id            { rarity }
-    // GET  /api/map-states/:id/species               the species found in a state
-    // POST /api/map-states/:id/species { kind, name, rarity }   a new species, found in this state
-    //                                  { species_id }           an existing species, added to this state
-    // DELETE /api/map-states/:id/species/:speciesId  no longer found there
-    if (resource === "species") {
-        if (parts.length === 2 && method === "GET") {
-            return send(200, species.listSpecies());
-        }
-        if (parts.length === 3 && method === "PUT") {
-            const data = await readJson(req);
-            return send(200, species.setRarity(id, data && data.rarity));
-        }
+    // GET  /api/map-states/:id/species               { direct: found in the state, with the rarity there,
+    //                                                  clients: found in the states under it }
+    // POST /api/map-states/:id/species { kind, name, rarity }          a new species, found in this state
+    //                                  { species_id, rarity }          an existing species, added to this state
+    // PUT  /api/map-states/:id/species/:speciesId { rarity }           how rare it is in this state
+    // DELETE /api/map-states/:id/species/:speciesId                    no longer found there
+    if (resource === "species" && parts.length === 2 && method === "GET") {
+        return send(200, species.listSpecies());
     }
 
     if (resource === "map-states" && sub === "species") {
         if (parts.length === 4 && method === "GET") {
-            return send(200, species.speciesIn(id));
+            return send(200, { direct: species.speciesIn(id), clients: species.speciesInClients(id) });
         }
         if (parts.length === 4 && method === "POST") {
             const data = (await readJson(req)) || {};
             if (data.species_id !== undefined) {
                 const speciesId = parseInteger(data.species_id, "species");
-                species.addToState(speciesId, id);
+                species.addToState(speciesId, id, data.rarity);
                 return send(200, species.getSpecies(speciesId));
             }
             const name = typeof data.name === "string" ? data.name.trim() : "";
@@ -202,6 +197,11 @@ module.exports = async function mapsApi(req, res, url) {
                 throw new HttpError(400, "A name is required");
             }
             return send(201, species.createSpecies(data.kind, name, data.rarity, id));
+        }
+        if (parts.length === 5 && method === "PUT") {
+            const data = (await readJson(req)) || {};
+            species.setRarity(parseInteger(rawSub, "species"), id, data.rarity);
+            return send(200, { ok: true });
         }
         if (parts.length === 5 && method === "DELETE") {
             species.removeFromState(parseInteger(rawSub, "species"), id);
