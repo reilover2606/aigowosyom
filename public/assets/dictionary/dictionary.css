@@ -1272,3 +1272,21 @@ details.inflected-forms > summary > * {
     font-style: italic;
     color: var(--muted);
 }
+
+/* The Names tab */
+.names-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    align-items: center;
+    margin: 12px 0;
+}
+
+.names-form input[type="number"] {
+    width: 5em;
+}
+
+.name-results li {
+    margin: 4px 0;
+    font-size: 1.15em;
+}

@@ -244,7 +244,7 @@ function languageShell(language, activeTab, content) {
 
     return layout({
         title: `${language.name}${
-            { stats: " statistics", sounds: " sound patterns", phonology: " phonology", inflection: " inflection" }[activeTab] || ""
+            { stats: " statistics", sounds: " sound patterns", phonology: " phonology", inflection: " inflection", names: " names" }[activeTab] || ""
         } – Dictionary`,
         search: { q: "" },
         body: `<main class="content language-page" style="${langVars(language.display_color, language.ink)}">
@@ -259,6 +259,7 @@ function languageShell(language, activeTab, content) {
         <a href="${base}?view=sounds"${activeTab === "sounds" ? ' class="active" aria-current="page"' : ""}>Sound patterns</a>
         <a href="${base}?view=phonology"${activeTab === "phonology" ? ' class="active" aria-current="page"' : ""}>Phonology</a>
         <a href="${base}?view=inflection"${activeTab === "inflection" ? ' class="active" aria-current="page"' : ""}>Inflection</a>
+        <a href="${base}?view=names"${activeTab === "names" ? ' class="active" aria-current="page"' : ""}>Names</a>
         <a class="tab-aside" href="/dictionary/family">Family tree</a>
     </nav>
     ${content}
@@ -1294,6 +1295,48 @@ function inflectionPage(res, language) {
 </div>`));
 }
 
+// The Names tab: draws random personal-name entries (part of speech "personal name"),
+// for masculine, feminine or both. A plain GET form, so each press picks afresh.
+function namesPage(res, language, params) {
+    const base = languageUrl(language.slug);
+    const gender = ["masculine", "feminine"].includes(params.get("gender")) ? params.get("gender") : "both";
+    const count = Math.min(30, Math.max(1, parseInt(params.get("count"), 10) || 5));
+    const asked = params.get("generate") !== null;
+    const result = dict.randomNames(language.id, gender, count);
+    // Drawn only when asked, so the first visit just shows the form.
+    const shown = asked ? result : { available: result.available, items: [] };
+
+    const genderControl = language.has_gender
+        ? `<label>Gender <select name="gender">${[["both", "Both"], ["masculine", "Masculine"], ["feminine", "Feminine"]]
+            .map(([v, t]) => `<option value="${v}"${v === gender ? " selected" : ""}>${t}</option>`).join("")}</select></label>`
+        : "";
+
+    const list = shown.items.length
+        ? `<ul class="plain-list name-results">${shown.items.map((w) => `<li>
+            <a class="conlang" href="${entryUrl(language.slug, w.headword)}" lang="${esc(language.slug)}">${esc(displayHeadword(w.headword, language.is_proto))}</a>
+            ${w.sinographs ? `<span class="sinographs conlang">${esc(w.sinographs)}</span>` : ""}
+            ${w.gender ? `<abbr class="gender" title="${esc(w.gender)}">${GENDER_ABBREVIATIONS[w.gender]}</abbr>` : ""}
+            ${w.gloss ? `<span class="gloss">${esc(glossSnippet(w.gloss))}</span>` : ""}
+        </li>`).join("")}</ul>`
+        : "";
+
+    const note = result.available === 0
+        ? `<p class="muted">No entries here have the part of speech “personal name” yet${gender === "both" || !language.has_gender ? "" : ` for ${gender} names`}.</p>`
+        : asked && shown.items.length < count
+          ? `<p class="muted">Only ${result.available} matching ${result.available === 1 ? "entry exists" : "entries exist"}, so that is all there is to show.</p>`
+          : `<p class="muted">${result.available} personal ${result.available === 1 ? "name" : "names"} to draw from${language.has_gender ? "; an entry with no gender marked counts as either" : ""}.</p>`;
+
+    sendHtml(res, 200, languageShell(language, "names", `<p class="muted">Random personal names from this language's entries marked as part of speech “personal name”.</p>
+    <form class="names-form" method="get" action="${base}">
+        <input type="hidden" name="view" value="names">
+        ${genderControl}
+        <label>How many <input type="number" name="count" min="1" max="30" value="${count}"></label>
+        <button type="submit" name="generate" value="1">Generate</button>
+    </form>
+    ${list}
+    ${note}`));
+}
+
 function editorPage(res) {
     sendHtml(
         res,
@@ -1409,6 +1452,8 @@ module.exports = async function dictionaryPages(req, res, url) {
             phonologyPage(res, language);
         } else if (url.searchParams.get("view") === "inflection") {
             inflectionPage(res, language);
+        } else if (url.searchParams.get("view") === "names") {
+            namesPage(res, language, url.searchParams);
         } else {
             languagePage(res, language, url.searchParams);
         }
