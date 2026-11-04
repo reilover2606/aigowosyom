@@ -2,7 +2,7 @@
     "use strict";
 
     const root = document.getElementById("editor");
-    const { hiddenField, hiddenMark } = window.UI;
+    const { hiddenField, hiddenMark, locked } = window.UI;
 
     // What a verb can be (kept in step with VERB_TRAITS in lib/dictionary.js).
     const VERB_TRAITS = ["transitive", "intransitive", "ditransitive", "mediopassive", "stative", "reflexive", "causative", "unaccusative"];
@@ -984,7 +984,7 @@
                     : null,
                 statusEl,
                 h("span", { class: "spacer" }),
-                draft.id && !draft.locked ? h("button", { type: "button", class: "danger", onclick: removeWord }, "Delete") : null
+                draft.id && !draft.locked ? h("button", { type: "button", class: "danger", disabled: locked("word", draft.id), onclick: removeWord }, "Delete") : null
             )
         );
 
@@ -1187,7 +1187,7 @@
                 h("span", { class: "spacer" }),
                 editing && !language.system_key
                     ? h("button", {
-                        type: "button", class: "danger",
+                        type: "button", class: "danger", disabled: locked("language", language.id),
                         onclick: async () => {
                             if (!confirm(`Delete the language “${language.name}”?`)) {
                                 return;
@@ -1648,7 +1648,7 @@
                 h("button", { type: "button", onclick: () => dialog.close() }, "Close"),
                 h("span", { class: "spacer" }),
                 h("button", {
-                    type: "button", class: "danger",
+                    type: "button", class: "danger", disabled: locked("template", draft.id),
                     onclick: async () => {
                         if (!draft.id) {
                             select(null);

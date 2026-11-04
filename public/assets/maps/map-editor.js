@@ -8,7 +8,7 @@
     "use strict";
 
     const ol = window.ol;
-    const { h, api, hiddenField } = window.UI;
+    const { h, api, hiddenField, locked } = window.UI;
     const root = document.getElementById("mapEditor");
 
     const SNAP_VERTEX_PX = 10;
@@ -1717,7 +1717,7 @@
                     isGroup ? null : h("button", { type: "button", onclick: () => setMode("borders") }, "Edit borders"),
                     isGroup ? null : h("button", { type: "button", onclick: () => drawInto(s.id, "piece") }, "Add island"),
                     isGroup ? null : h("button", { type: "button", onclick: () => drawInto(s.id, "hole") }, "Add hole"),
-                    h("button", { type: "button", class: "danger", onclick: () => deleteState(s, isGroup) }, isGroup ? "Dissolve" : "Delete")));
+                    h("button", { type: "button", class: "danger", disabled: locked("state", s.id), onclick: () => deleteState(s, isGroup) }, isGroup ? "Dissolve" : "Delete")));
             return;
         }
 
@@ -1742,7 +1742,7 @@
                 hiddenInput.element,
                 h("div", { class: "row" },
                     h("button", { type: "button", onclick: () => setMode("reshape") }, "Reshape"),
-                    h("button", { type: "button", class: "danger", onclick: () => deleteFeature(f) }, "Delete")));
+                    h("button", { type: "button", class: "danger", disabled: locked("shape", f.id), onclick: () => deleteFeature(f) }, "Delete")));
             return;
         }
 
@@ -1763,7 +1763,7 @@
                 hiddenInput.element,
                 h("div", { class: "row" },
                     h("button", { type: "button", onclick: () => setMovePlace() }, "Move"),
-                    h("button", { type: "button", class: "danger", onclick: () => deletePlace(p) }, "Delete")));
+                    h("button", { type: "button", class: "danger", disabled: locked("place", p.id), onclick: () => deletePlace(p) }, "Delete")));
         }
     }
 
@@ -2057,7 +2057,7 @@
                     h("input", { type: "checkbox", checked: Boolean(image.visible), "aria-label": "Show", onchange: (event) => save({ visible: event.target.checked }) }),
                     h("strong", {}, image.name),
                     h("span", { class: "grow" }),
-                    h("button", { type: "button", class: "danger", onclick: async () => {
+                    h("button", { type: "button", class: "danger", disabled: locked("image", image.id), onclick: async () => {
                         if (confirm(`Remove the tracer “${image.name}”?`)) {
                             await guarded(async () => { await api("DELETE", `/api/map-images/${image.id}`); await load(); });
                         }
@@ -2706,7 +2706,7 @@
                 map ? h("a", { href: `/maps/${encodeURIComponent(map.slug)}`, target: "_blank" }, "View ", Icons.el("external")) : null),
             map ? h("p", { class: "hint" },
                 `${map.width} × ${map.height} map units · 1 unit = ${Number(map.miles_per_unit.toPrecision(4))} mi · about ${Math.round(map.width * map.miles_per_unit).toLocaleString()} mi wide`) : null,
-            map ? h("div", { class: "row" }, h("button", { type: "button", class: "danger", onclick: deleteMap }, "Delete this map")) : null);
+            map ? h("div", { class: "row" }, h("button", { type: "button", class: "danger", disabled: locked("map", map.id), onclick: deleteMap }, "Delete this map")) : null);
     }
 
     function renderAll() {

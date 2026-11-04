@@ -108,5 +108,13 @@
         return h("span", { class: "hidden-mark", title: "Marked “Do not publish”" }, window.Icons.el("eyeoff"));
     }
 
-    window.UI = { DEFAULT_COLOR, h, api, slugify, inkFor, badge, formatWhen, hiddenField, hiddenMark };
+    // Is this item locked against deletion (see lib/locks.js)? kind: language, word,
+    // template, category, page, map, state, place, shape, image, note; era takes a name.
+    // The list comes with the page; the editors gray the item's Delete button.
+    function locked(kind, id) {
+        const list = (window.DELETE_LOCKS || {})[kind];
+        return Array.isArray(list) && list.some((x) => (kind === "era" ? String(x) === String(id).toLowerCase() : x === id));
+    }
+
+    window.UI = { locked, DEFAULT_COLOR, h, api, slugify, inkFor, badge, formatWhen, hiddenField, hiddenMark };
 })();

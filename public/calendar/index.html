@@ -1079,6 +1079,15 @@ const WEEKDAYS = [
 
 let eras = [];
 
+// Delete locks (lib/locks.js): items listed in data/delete-locks.txt get a grayed-out Delete.
+let deleteLocks = {};
+fetch("/api/locks").then((r) => r.json()).then((x) => { deleteLocks = x; }).catch(() => {});
+
+function isLocked(kind, id) {
+    const list = deleteLocks[kind] || [];
+    return list.some((x) => (kind === "era" ? String(x) === String(id).toLowerCase() : x === id));
+}
+
 // An era is shown as its name followed by its sinograph gloss, if it has one.
 function eraLabel(era) {
     return era.sinographs ? `${era.name} ${era.sinographs}` : era.name;
@@ -1941,7 +1950,7 @@ function renderEraRows() {
         pick.type = "checkbox";
         pick.checked = !!row.picked;
         pick.setAttribute("aria-label", "Select this era");
-        pick.addEventListener("change", () => { row.picked = pick.checked; });
+        pick.addEventListener("change", () => { row.picked = pick.checked; updateEraDeleteButton(); });
         cell(pick);
 
         const name = field("text", "name", "Era name");
@@ -1967,6 +1976,12 @@ function renderEraRows() {
 
     gap(sorted.length);
     refreshEraSummary();
+    updateEraDeleteButton();
+}
+
+// Delete is grayed out while a locked era is ticked.
+function updateEraDeleteButton() {
+    document.getElementById("erasDelete").disabled = draft.some((r) => r.picked && isLocked("era", r.name));
 }
 
 // Adds an era at position `index` of the ordered rows: a year between its
@@ -2358,6 +2373,7 @@ function renderNotes(notes) {
         const deleteButton = document.createElement("button");
         deleteButton.type = "button";
         deleteButton.textContent = "Delete";
+        deleteButton.disabled = isLocked("note", note.id);
         deleteButton.addEventListener("click", async () => {
             if (!confirm("Delete this note?")) {
                 return;

@@ -48,6 +48,7 @@ require("./lib/maps").syncStateSlugs(); // state pages' slugs follow their names
 require("./lib/species").ensureCategories(); // the built-in Flora and Fauna categories (editor only)
 const { HttpError, sendJson, sendHtml } = require("./lib/http");
 const { esc, layout } = require("./lib/render");
+const locks = require("./lib/locks");
 
 const { PORT, HOST } = config;
 
@@ -121,6 +122,13 @@ const server = http.createServer(async (req, res) => {
                 throw new HttpError(refused.status, refused.message);
             }
         }
+
+        // Delete locks (lib/locks.js): which items the editors must not delete.
+        if (url.pathname === "/api/locks" && req.method === "GET") {
+            sendJson(res, 200, locks.current());
+            return;
+        }
+        locks.refuseIfLocked(req.method, url.pathname);
 
         for (const handler of handlers) {
             if (await handler(req, res, url)) {

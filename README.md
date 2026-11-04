@@ -183,3 +183,24 @@ public/                 landing page, calendar app, dictionary editor assets
 ### State page slugs
 
 A state's lore page always has the state's name as its title and its slug: renaming a state (in the editor, or by restoring a map snapshot) renames the page and its URL (`Old Tanak` → `old-tanak`; a number such as `-2` is added only if another page in States already has that slug). On startup an editor instance also brings any slug that was left behind by an earlier rename back in step with its state's name. Links written with the old slug stop working; links by name keep working.
+
+### Delete locks
+
+To keep something from being deleted by accident, list it in `data/delete-locks.txt` (next to the database, so it is not in git; or set `DELETE_LOCKS_FILE`). One item per line; blank lines and `#` comments are ignored and names are not case-sensitive:
+
+```
+language: kyora
+word: kyora / headword
+template: kyora / Verb table
+category: states
+page: states / old-tanak
+map: tanak-lands
+state: tanak-lands / Old Tanak
+place: tanak-lands / Gate City
+shape: tanak-lands / Southern Sea
+image: tanak-lands / Old survey
+note: 123
+era: Kemairyom
+```
+
+A locked item's **Delete** button (Dissolve, for a superstate) is grayed out in the editors, with no message; for eras, Delete is grayed while a locked era is ticked. The server also refuses the delete if asked another way (403), and `PUT /api/eras` refuses a list without a locked era. Only deleting the item itself is stopped, not deleting something that contains it (a language with a locked word in it). The file is read again whenever it changes, but an open editor page needs a reload to show a new lock. Implemented in `lib/locks.js`.
