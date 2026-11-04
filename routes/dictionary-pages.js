@@ -639,8 +639,12 @@ function renderEntry(word, language, index, multiple) {
           ? "" // a pure variant is described by its "Variant of:" line below
           : '<p class="muted">No definition yet.</p>';
 
+    const traits = (word.verb_traits || []).length
+        ? `<p class="verb-traits">${word.verb_traits.map((t) => esc(t)).join(", ")}</p>`
+        : "";
+
     sections.push(
-        `<${innerTag}>${esc(capitalize(word.pos || "Entry"))}</${innerTag}>${headwordLine}${senses}`
+        `<${innerTag}>${esc(capitalize(word.pos || "Entry"))}</${innerTag}>${headwordLine}${traits}${senses}`
     );
 
     // Inflection tables the word follows.

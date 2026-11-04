@@ -4,6 +4,9 @@
     const root = document.getElementById("editor");
     const { hiddenField, hiddenMark } = window.UI;
 
+    // What a verb can be (kept in step with VERB_TRAITS in lib/dictionary.js).
+    const VERB_TRAITS = ["transitive", "intransitive", "ditransitive", "mediopassive", "stative", "reflexive", "causative", "unaccusative"];
+    const isVerb = (pos) => (pos || "").trim().toLowerCase() === "verb";
     const POS_SUGGESTIONS = [
         "noun", "verb", "adjective", "adverb", "pronoun", "numeral",
         "particle", "preposition", "postposition", "conjunction",
@@ -474,6 +477,7 @@
             headword: "",
             pos: "",
             gender: "",
+            verb_traits: [],
             pronunciation: "",
             sinographs: "",
             etymology: "",
@@ -495,6 +499,7 @@
             headword: word.headword,
             pos: word.pos || "",
             gender: word.gender || "",
+            verb_traits: word.verb_traits || [],
             pronunciation: word.pronunciation || "",
             sinographs: word.sinographs || "",
             etymology: word.etymology || "",
@@ -568,7 +573,7 @@
 
     // A labelled text field bound to a draft property.
     // `conlang` marks fields that hold words of the language (sans-serif).
-    function textField(label, name, { hint, tag = "input", list, placeholder, conlang = false } = {}) {
+    function textField(label, name, { hint, tag = "input", list, placeholder, conlang = false, onChange } = {}) {
         const control = h(tag, {
             name,
             class: conlang ? "conlang" : undefined,
@@ -578,6 +583,9 @@
             autocomplete: "off",
             oninput: () => {
                 state.draft[name] = control.value;
+                if (onChange) {
+                    onChange();
+                }
                 markDirty();
             }
         });
@@ -864,6 +872,22 @@
                 })())
             : null;
 
+        // Tick boxes for what a verb is; they appear only while the part of speech is "verb".
+        const traitsField = h("div", { class: "field verb-traits-field", hidden: !isVerb(draft.pos) },
+            h("span", { class: "label" }, "Verb type", h("span", { class: "hint" }, " — optional")),
+            h("div", { class: "trait-list" },
+                ...VERB_TRAITS.map((trait) => {
+                    const box = h("input", {
+                        type: "checkbox",
+                        checked: draft.verb_traits.includes(trait),
+                        onchange: () => {
+                            draft.verb_traits = VERB_TRAITS.filter((t) => (t === trait ? box.checked : draft.verb_traits.includes(t)));
+                            markDirty();
+                        }
+                    });
+                    return h("label", {}, box, trait);
+                })));
+
         statusEl = h("span", { class: "status" });
 
         formEl.replaceChildren(
@@ -876,10 +900,11 @@
 
             h("div", { class: "field-grid" },
                 textField("Headword", "headword", { conlang: true }),
-                textField("Part of speech", "pos", { list: "pos-suggestions" }),
+                textField("Part of speech", "pos", { list: "pos-suggestions", onChange: () => { traitsField.hidden = !isVerb(state.draft.pos); } }),
                 genderField
             ),
             posList,
+            traitsField,
 
             h("div", { class: "field-grid" },
                 pronunciationField(),
@@ -1005,6 +1030,7 @@
             headword: draft.headword,
             pos: draft.pos,
             gender: draft.gender,
+            verb_traits: isVerb(draft.pos) ? draft.verb_traits : [],
             pronunciation: draft.pronunciation,
             sinographs: draft.sinographs,
             etymology: draft.etymology,
