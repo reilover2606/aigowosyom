@@ -697,3 +697,25 @@ dialog.templates-dialog {
     padding: 8px 10px;
     margin-bottom: 10px;
 }
+
+/* Verb traits: tick boxes, shown only while the part of speech is "verb" */
+.verb-traits-field[hidden] {
+    display: none;
+}
+
+.verb-traits-field .trait-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+}
+
+.verb-traits-field .trait-list label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: normal;
+}
+
+.verb-traits-field .trait-list input {
+    width: auto;
+}

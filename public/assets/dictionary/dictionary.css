@@ -1265,3 +1265,10 @@ details.inflected-forms > summary > * {
         display: block;
     }
 }
+
+/* A verb's traits (transitive, causative, ...) under its headword */
+.verb-traits {
+    margin: -4px 0 8px;
+    font-style: italic;
+    color: var(--muted);
+}
