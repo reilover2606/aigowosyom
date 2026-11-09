@@ -44,6 +44,7 @@ Everything lives in one SQLite file, `data/worldbuilding.db` (created on first r
 - **Sound patterns:** a third language tab (`?view=sounds`) with a letter-pair heatmap. Each cell counts how often one letter is immediately followed by another in headwords; the `#` row and column show which letters begin and end words, and blank cells never occur. Vowels come first, then consonants (`y` counts as a consonant), so the vowel/consonant structure shows up as quadrants. It is based on spelling (a digraph like `kh` is k then h). Accented letters can be merged with plain ones or kept distinct (`&marks=keep`). Also shows the share of letter pairs that never occur, letters that never begin or end a word, and a ranked list of the most common pairs.
 - **Verb types:** when a word's part of speech is *verb* (any capitalisation), the word form shows tick boxes for what kind of verb it is: transitive, intransitive, ditransitive, mediopassive, stative, reflexive, causative, unaccusative (any number may apply). They appear and disappear as the part of speech is typed, are saved in `words.verb_traits` (a comma-separated list; API field `verb_traits`, an array) and are dropped when the part of speech is anything else. The entry page shows them in italics under the headword line.
 - **Names tab (random personal names):** each language page has a **Names** tab (`?view=names`) that draws random entries whose part of speech is *personal name*. A drop-down picks **Masculine**, **Feminine** or **Both** (shown only for languages with grammatical gender; an entry with no gender marked counts as either) and a box sets how many (1–30); **Generate** draws a fresh set each time, showing each name with its sinographs, gender mark and first definition, linked to its entry. It reads the entries as they are, so it works on a public site too.
+- **Diphthongs (Sounds and spelling):** diphthongs are defined one by one at the bottom of the **Sounds** tab (below the vowel chart): pick the two vowels from the inventory, or click a common pair (ai au ei …) offered when both vowels are there; each shows how it moves (closing, opening, centering or level, from the vowels' heights), has a **syllable weight** (heavy by default; light if it shouldn't make its syllable heavy for the "weight" stress rule) and an optional note. The **Spelling** tab marks a letter whose sound is a defined diphthong ("/ai/ diphthong") and lists diphthongs that have no letter yet (click one to add a rule for it). The **Syllables and stress** tab no longer has its own diphthong box: it shows the defined list and a button back to Sounds. A defined diphthong is one syllable nucleus when words are divided into syllables; vowels in a row that aren't defined stay in hiatus. The public Phonology page has a Diphthongs table (movement, weight, the letters that spell it, how many words use it). Saved as JSON in `language_prosody.diphthong_defs`; the plain list (`diphthongs`, "ai au") is kept in step, and a language saved before this reads its old list as heavy diphthongs. API: `prosody.diphthong_defs` (`[{ first, second, note, weight }]`) in `PUT /api/dictionary/phonology/<id>`; the old `prosody.diphthongs` string is still accepted.
 - **Sorting the Words tab:** alphabetical (with an initial-letter filter) or by part of speech (grouped, alphabetical within each group, with a part-of-speech filter). The sort and filter are kept while paging.
 - **Parts of speech** are free text with suggestions in the editor, including *proper noun*, *personal name*, *family name* and *toponym*.
 - **Sounds and spelling (phonology):** each language can have its phoneme inventory and its orthography set. In the editor, **Sounds and spelling** opens a dialog with two tabs: *Sounds* (click symbols on the IPA consonant and vowel charts to add or remove them, plus an "Other sounds" box for anything else: long, aspirated or nasal versions, clicks, tones) and *Spelling* (which letter, or group of letters such as "kh", stands for which sound or run of sounds; "x = ks" is fine). The spelling is taken to be fully phonetic, so a word's sounds follow from its letters, longest letters first; matching ignores capitals but not accents (ā and a are different letters). Every sound a letter uses has to be in the inventory (the dialog and the server both say so). Stored in `language_phonemes` and `language_graphemes` (`lib/phonology.js`, with the chart reference in `lib/ipa.js`); API: `GET /api/dictionary/ipa`, `GET|PUT /api/dictionary/phonology/<language id>`, `GET /api/dictionary/transcribe?language=&q=`. What it gives:
@@ -183,3 +184,24 @@ public/                 landing page, calendar app, dictionary editor assets
 ### State page slugs
 
 A state's lore page always has the state's name as its title and its slug: renaming a state (in the editor, or by restoring a map snapshot) renames the page and its URL (`Old Tanak` → `old-tanak`; a number such as `-2` is added only if another page in States already has that slug). On startup an editor instance also brings any slug that was left behind by an earlier rename back in step with its state's name. Links written with the old slug stop working; links by name keep working.
+
+### Delete locks
+
+To keep something from being deleted by accident, list it in `data/delete-locks.txt` (next to the database, so it is not in git; or set `DELETE_LOCKS_FILE`). One item per line; blank lines and `#` comments are ignored and names are not case-sensitive:
+
+```
+language: kyora
+word: kyora / headword
+template: kyora / Verb table
+category: states
+page: states / old-tanak
+map: tanak-lands
+state: tanak-lands / Old Tanak
+place: tanak-lands / Gate City
+shape: tanak-lands / Southern Sea
+image: tanak-lands / Old survey
+note: 123
+era: Kemairyom
+```
+
+A locked item's **Delete** button (Dissolve, for a superstate) is grayed out in the editors, with no message; for eras, Delete is grayed while a locked era is ticked. The server also refuses the delete if asked another way (403), and `PUT /api/eras` refuses a list without a locked era. Only deleting the item itself is stopped, not deleting something that contains it (a language with a locked word in it). The file is read again whenever it changes, but an open editor page needs a reload to show a new lock. Implemented in `lib/locks.js`.

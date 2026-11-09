@@ -117,3 +117,10 @@ html[data-site-mode="public"] .editor-only {
 .field.check.hidden-field {
     margin-top: 12px;
 }
+
+/* A button that can't be used (for instance Delete on a locked item) is simply grayed out. */
+button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+}

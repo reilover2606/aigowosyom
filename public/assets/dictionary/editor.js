@@ -2,7 +2,7 @@
     "use strict";
 
     const root = document.getElementById("editor");
-    const { hiddenField, hiddenMark } = window.UI;
+    const { hiddenField, hiddenMark, locked } = window.UI;
 
     // What a verb can be (kept in step with VERB_TRAITS in lib/dictionary.js).
     const VERB_TRAITS = ["transitive", "intransitive", "ditransitive", "mediopassive", "stative", "reflexive", "causative", "unaccusative"];
@@ -984,7 +984,7 @@
                     : null,
                 statusEl,
                 h("span", { class: "spacer" }),
-                draft.id && !draft.locked ? h("button", { type: "button", class: "danger", onclick: removeWord }, "Delete") : null
+                draft.id && !draft.locked ? h("button", { type: "button", class: "danger", disabled: locked("word", draft.id), onclick: removeWord }, "Delete") : null
             )
         );
 
@@ -1187,7 +1187,7 @@
                 h("span", { class: "spacer" }),
                 editing && !language.system_key
                     ? h("button", {
-                        type: "button", class: "danger",
+                        type: "button", class: "danger", disabled: locked("language", language.id),
                         onclick: async () => {
                             if (!confirm(`Delete the language “${language.name}”?`)) {
                                 return;
@@ -1648,7 +1648,7 @@
                 h("button", { type: "button", onclick: () => dialog.close() }, "Close"),
                 h("span", { class: "spacer" }),
                 h("button", {
-                    type: "button", class: "danger",
+                    type: "button", class: "danger", disabled: locked("template", draft.id),
                     onclick: async () => {
                         if (!draft.id) {
                             select(null);
@@ -1851,6 +1851,111 @@
                     : null);
         }
 
+        // ---- Diphthongs: defined here, used by the spelling (a letter can stand for one) and by the
+        // syllables (a diphthong is one nucleus, heavy unless set light). ----
+        const diphthongs = () => {
+            if (!Array.isArray(draft.prosody.diphthong_defs)) {
+                draft.prosody.diphthong_defs = [];
+            }
+            return draft.prosody.diphthong_defs;
+        };
+
+        // How it moves, from the two vowels' heights (chart.heights runs close to open).
+        function diphthongMovement(first, second) {
+            const a = draft.phonemes.find((p) => p.ipa === first);
+            const b = draft.phonemes.find((p) => p.ipa === second);
+            const keys = chart.heights.map(([key]) => key);
+            if (!a || !b || !a.height || !b.height) {
+                return "";
+            }
+            const x = keys.indexOf(a.height);
+            const y = keys.indexOf(b.height);
+            if (y < x) {
+                return "closing";
+            }
+            if (y > x) {
+                return b.backness === "central" ? "centering" : "opening";
+            }
+            return b.backness === "central" && a.backness !== "central" ? "centering" : "level";
+        }
+
+        // A diphthong's letters in the spelling, if any rule has its two vowels side by side.
+        function diphthongSpelledBy(d) {
+            const symbols = draft.phonemes.map((p) => p.ipa);
+            return [...new Set(draft.graphemes.filter((g) => {
+                const parts = segmentIpa((g.ipa || "").normalize("NFC"), symbols) || [];
+                return parts.some((x, i) => x === d.first && parts[i + 1] === d.second);
+            }).map((g) => g.grapheme))];
+        }
+
+        function diphthongSection() {
+            const vowels = draft.phonemes.filter((p) => p.kind === "vowel").map((p) => p.ipa);
+            const list = diphthongs();
+            const vowelSelect = (value, onchange) => h("select", { class: "ipa-input", onchange: (event) => onchange(event.target.value) },
+                ...vowels.map((v) => h("option", { value: v, selected: v === value }, v)));
+            const firstPick = vowelSelect(vowels[0], () => {});
+            const secondPick = vowelSelect(vowels[1] || vowels[0], () => {});
+            const defined = (a, b) => list.some((d) => d.first === a && d.second === b);
+
+            const rows = list.map((d) => {
+                const movement = h("span", { class: "hint" }, diphthongMovement(d.first, d.second));
+                const refresh = () => { movement.textContent = diphthongMovement(d.first, d.second); };
+                const spelled = diphthongSpelledBy(d);
+                return h("tr", {},
+                    h("td", {}, vowelSelect(d.first, (v) => { d.first = v; refresh(); }), " ", vowelSelect(d.second, (v) => { d.second = v; refresh(); })),
+                    h("td", {}, movement),
+                    h("td", {}, h("select", { onchange: (event) => { d.weight = event.target.value; } },
+                        h("option", { value: "heavy", selected: d.weight !== "light" }, "heavy"),
+                        h("option", { value: "light", selected: d.weight === "light" }, "light"))),
+                    h("td", {}, h("input", {
+                        type: "text", value: d.note || "", size: "14", placeholder: "note (optional)", autocomplete: "off",
+                        oninput: (event) => { d.note = event.target.value; }
+                    })),
+                    h("td", {}, spelled.length
+                        ? h("span", { class: "conlang" }, spelled.join(", "))
+                        : h("span", { class: "hint" }, "no letter yet")),
+                    h("td", { class: "row-tools" }, h("button", {
+                        type: "button", title: "Remove this diphthong",
+                        onclick: () => { draft.prosody.diphthong_defs = list.filter((x) => x !== d); render(); }
+                    }, "×")));
+            });
+
+            // Pairs that are usually diphthongs, offered when both vowels are in the inventory.
+            const common = [["a", "i"], ["a", "u"], ["e", "i"], ["e", "u"], ["o", "i"], ["o", "u"], ["ɛ", "i"], ["ɔ", "i"],
+                ["i", "a"], ["u", "a"], ["i", "e"], ["u", "e"], ["i", "o"], ["u", "o"], ["a", "e"], ["a", "o"]]
+                .filter(([a, b]) => vowels.includes(a) && vowels.includes(b) && !defined(a, b));
+
+            const add = (first, second) => {
+                if (defined(first, second)) {
+                    errorEl.textContent = `${first}${second} is already defined.`;
+                    return;
+                }
+                errorEl.textContent = "";
+                list.push({ first, second, note: "", weight: "heavy" });
+                render();
+            };
+
+            return h("div", { class: "field diphthongs" },
+                h("h3", {}, "Diphthongs"),
+                h("p", { class: "hint" }, "Two vowels spoken as one syllable. Define them here: the Spelling tab can then give a letter or digraph (ai, au) to one, and words are divided into syllables with it as a single nucleus. Vowels in a row that are not listed stay separate syllables (hiatus). A heavy diphthong makes its syllable heavy for the stress rule; set a diphthong light if yours doesn't."),
+                vowels.length < 2 && !list.length
+                    ? h("p", { class: "hint" }, "Add at least two vowels above first.")
+                    : null,
+                list.length
+                    ? h("table", { class: "spelling-edit diphthong-edit" },
+                        h("thead", {}, h("tr", {}, h("th", {}, "Vowels"), h("th", {}, "Movement"), h("th", {}, "Syllable weight"), h("th", {}, "Note"), h("th", {}, "Spelled"), h("th", {}))),
+                        h("tbody", {}, ...rows))
+                    : null,
+                vowels.length
+                    ? h("div", { class: "row" }, firstPick, secondPick,
+                        h("button", { type: "button", onclick: () => add(firstPick.value, secondPick.value) }, "Add diphthong"))
+                    : null,
+                common.length
+                    ? h("div", { class: "row" }, h("span", { class: "hint" }, "Common pairs in your inventory:"),
+                        ...common.map(([a, b]) => h("button", { type: "button", class: "chip-button", onclick: () => add(a, b) }, `${a}${b}`)))
+                    : null);
+        }
+
         function soundsTab() {
             const consonants = draft.phonemes.filter((p) => p.kind === "consonant").length;
             const vowels = draft.phonemes.filter((p) => p.kind === "vowel").length;
@@ -1858,6 +1963,7 @@
                 h("p", { class: "hint" }, `Click a symbol to add it to the inventory, and again to take it out. ${consonants} consonant${consonants === 1 ? "" : "s"}, ${vowels} vowel${vowels === 1 ? "" : "s"}.`),
                 h("h3", {}, "Consonants"), consonantTable(),
                 h("h3", {}, "Vowels"), vowelTable(),
+                diphthongSection(),
                 prosodySection(),
                 customSection());
         }
@@ -1886,7 +1992,11 @@
                         : { cls: "bad", text: `no sound in the inventory ends in ${text}` };
                 }
                 const parts = segmentIpa(text, symbols);
-                return parts ? { cls: "ok", text: `/${parts.join("")}/` } : { cls: "bad", text: "not in the inventory" };
+                if (!parts) {
+                    return { cls: "bad", text: "not in the inventory" };
+                }
+                const isDiphthong = parts.length === 2 && diphthongs().some((d) => d.first === parts[0] && d.second === parts[1]);
+                return { cls: "ok", text: `/${parts.join("")}/${isDiphthong ? " diphthong" : ""}` };
             };
 
             const row = (g) => {
@@ -1961,6 +2071,19 @@
                             render();
                         }
                     }, `Add a letter for each unspelled sound (${unspelled.length})`)),
+                (() => {
+                    const bare = diphthongs().filter((d) => diphthongSpelledBy(d).length === 0);
+                    return diphthongs().length
+                        ? h("div", { class: "row" },
+                            h("span", { class: "hint" }, bare.length
+                                ? "Diphthongs with no letter yet (click to add one, then change it to your spelling):"
+                                : "Every diphthong has a letter."),
+                            ...bare.map((d) => h("button", {
+                                type: "button", class: "chip-button",
+                                onclick: () => { draft.graphemes.push({ grapheme: d.first + d.second, ipa: d.first + d.second, note: "", where_pos: null, after_text: "", before_text: "" }); render(); }
+                            }, `${d.first}${d.second}`)))
+                        : null;
+                })(),
                 unspelled.length
                     ? h("p", { class: "hint" }, "Sounds with no letter yet: ", ...unspelled.flatMap((x) => [h("span", { class: "ipa" }, x), " "]))
                     : null);
@@ -2025,8 +2148,12 @@
                     h("input", { type: "checkbox", id: "show-syllables", checked: Boolean(prosody.show_syllables), onchange: (event) => { prosody.show_syllables = event.target.checked ? 1 : 0; tryWord(); } }),
                     h("label", { for: "show-syllables" }, "Show syllable boundaries (dots) in transcriptions")),
                 h("div", { class: "field" },
-                    h("label", {}, "Diphthongs", h("span", { class: "hint" }, " — vowel pairs that make one syllable, separated by spaces (ai au ei). Other vowels in a row are separate syllables.")),
-                    input("diphthongs", "ai au")),
+                    h("label", {}, "Diphthongs", h("span", { class: "hint" }, " — defined under Sounds; each is one syllable nucleus, and other vowels in a row are separate syllables")),
+                    h("div", { class: "row" },
+                        diphthongs().length
+                            ? h("span", {}, ...diphthongs().flatMap((d) => [h("span", { class: "ipa" }, `${d.first}${d.second}`), d.weight === "light" ? h("small", { class: "hint" }, " light") : "", "  "]))
+                            : h("span", { class: "hint" }, "none defined"),
+                        h("button", { type: "button", onclick: () => { tab = "sounds"; render(); } }, "Define diphthongs…"))),
                 h("div", { class: "field" },
                     h("label", {}, "Syllabic consonants", h("span", { class: "hint" }, " — consonants that can be a syllable on their own, when no vowel is next to them (n m l r in vlk, prst). They are written with a ̩ under them in transcriptions.")),
                     input("syllabic", "l r n m")),
@@ -2062,6 +2189,10 @@
         }
 
         function render() {
+            // A diphthong whose vowel has left the inventory goes with it.
+            const vowelsNow = new Set(draft.phonemes.filter((p) => p.kind === "vowel").map((p) => p.ipa));
+            diphthongs();
+            draft.prosody.diphthong_defs = draft.prosody.diphthong_defs.filter((d) => vowelsNow.has(d.first) && vowelsNow.has(d.second));
             put(tabs,
                 ...[["sounds", "Sounds"], ["spelling", "Spelling"], ["prosody", "Syllables and stress"]].map(([key, label]) => h("button", {
                     type: "button", class: tab === key ? "active" : "",

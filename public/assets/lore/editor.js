@@ -1,7 +1,7 @@
 (() => {
     "use strict";
 
-    const { h, api, slugify, inkFor, badge, formatWhen, hiddenField, hiddenMark, DEFAULT_COLOR } = window.UI;
+    const { h, api, slugify, inkFor, badge, formatWhen, hiddenField, hiddenMark, locked, DEFAULT_COLOR } = window.UI;
     const root = document.getElementById("editor");
 
     const state = {
@@ -993,7 +993,7 @@
                     : null,
                 statusEl,
                 h("span", { class: "spacer" }),
-                draft.id && !draft.isEra ? h("button", { type: "button", class: "danger", onclick: removePage }, "Delete") : null
+                draft.id && !draft.isEra ? h("button", { type: "button", class: "danger", disabled: locked("page", draft.id), onclick: removePage }, "Delete") : null
             )
         );
     }
@@ -1230,6 +1230,7 @@
                     ? h("button", {
                         type: "button",
                         class: "danger",
+                        disabled: locked("category", category.id),
                         onclick: async () => {
                             if (!confirm(`Delete the category “${category.name}”?`)) {
                                 return;

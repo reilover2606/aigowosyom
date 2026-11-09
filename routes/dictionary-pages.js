@@ -1026,10 +1026,20 @@ function phonologyPage(res, language) {
         <h2>Syllables and stress</h2>
         <ul class="plain-list">
             <li>Stress falls on ${esc(STRESS_RULE_TEXT[prosody.stress_rule] || "")}${prosody.stress_rule !== "none" ? ", unless the spelling marks it" : ""}.</li>
-            ${prosody.diphthongs ? `<li>Diphthongs: ${prosody.diphthongs.split(" ").map((d) => `<span class="ipa">${esc(d)}</span>`).join(" ")}</li>` : ""}
             ${prosody.onsets ? `<li>Consonant clusters that can begin a syllable: ${prosody.onsets.split(" ").map((d) => `<span class="ipa">${esc(d)}</span>`).join(" ")}</li>` : ""}
             ${prosody.max_coda !== null ? `<li>A syllable can end in at most ${prosody.max_coda === 0 ? "no consonants (open syllables)" : `${prosody.max_coda} consonant${prosody.max_coda === 1 ? "" : "s"}`}.</li>` : ""}
         </ul>
+        ${report.diphthongStats.length ? `<h3>Diphthongs</h3>
+        <table class="relations spelling-table">
+            <thead><tr><th>Diphthong</th><th>Movement</th><th>Syllable weight</th><th>Spelled</th><th>Words</th></tr></thead>
+            <tbody>${report.diphthongStats.map((d) => `<tr>
+                <td><span class="ipa">${esc(d.ipa)}</span>${d.note ? ` <span class="muted">${esc(d.note)}</span>` : ""}</td>
+                <td>${esc(d.type || "")}</td>
+                <td>${d.weight}</td>
+                <td>${d.spelledBy.length ? d.spelledBy.map((g) => `<span class="conlang">${esc(g)}</span>`).join(", ") : '<span class="muted">no letter yet</span>'}</td>
+                <td>${d.words ? `${d.words} (<a class="conlang" href="${entryUrl(language.slug, d.example)}">${esc(d.example)}</a>)` : '<span class="muted">none</span>'}</td>
+            </tr>`).join("")}</tbody>
+        </table>` : ""}
         <div class="two-up">
             <div><h3>Syllable shapes</h3>${charts.barList(report.syllableShapes.map((s) => ({ label: s.shape, count: s.count })))}</div>
             <div><h3>Syllables per word</h3>${charts.barList(report.syllableCounts.map((s) => ({ label: `${s.syllables} syllable${s.syllables === 1 ? "" : "s"}`, count: s.count })))}</div>

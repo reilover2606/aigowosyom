@@ -132,6 +132,50 @@ check("syllables: maximal onset with the allowed clusters, and a limit on codas"
     assert.strictEqual(phon.transcribe(lang.id, "kasta").surface, "/ka.sta/", "no codas: the whole cluster moves on");
 });
 
+check("diphthongs are defined one by one: they make one nucleus, can be light, and spelling can name them", () => {
+    const lang = dict.createLanguage({ slug: "dph", name: "Dph" });
+    const inventory = ["t", "k", "n", "a", "i", "u", "e", "ˈ"].map((ipa) => ({ ipa }));
+    const graphemes = [["t", "t"], ["k", "k"], ["n", "n"], ["a", "a"], ["i", "i"], ["u", "u"], ["e", "e"], ["ai", "ai"]]
+        .map(([grapheme, ipa]) => ({ grapheme, ipa }));
+    const save = (defs, extra = {}) => phon.savePhonology(lang.id, {
+        phonemes: inventory, graphemes, prosody: { diphthong_defs: defs, show_syllables: true, ...extra }
+    });
+
+    const saved = save([{ first: "a", second: "i", note: "as in ai", weight: "heavy" }, { first: "a", second: "u" }]);
+    assert.deepStrictEqual(saved.prosody.diphthong_defs.map((d) => d.first + d.second), ["ai", "au"]);
+    assert.strictEqual(saved.prosody.diphthongs, "ai au", "the plain list stays in step for everything that reads it");
+    assert.strictEqual(phon.transcribe(lang.id, "kaita").surface, "/kai.ta/", "ai is one nucleus");
+    assert.strictEqual(phon.transcribe(lang.id, "kaena").surface, "/ka.e.na/", "ae isn't defined: hiatus");
+
+    // weight: the stress rule counts a heavy diphthong, not a light one
+    const stress = (weight) => {
+        save([{ first: "a", second: "i", weight }], { stress_rule: "weight", stress_mark: "ˈ" });
+        return phon.transcribe(lang.id, "takaina").surface;
+    };
+    assert.strictEqual(stress("heavy"), "/taˈkai.na/", "a heavy diphthong makes the second-to-last syllable heavy");
+    assert.strictEqual(stress("light"), "/ˈta.kai.na/", "a light one doesn't: stress moves to the third to last");
+
+    // the report: movement, spelling and use
+    save([{ first: "a", second: "i" }, { first: "a", second: "u" }]);
+    dict.saveWord(null, lang.id, { headword: "kaita", senses: ["x"] });
+    const report = phon.analyze(lang.id);
+    const ai = report.diphthongStats.find((d) => d.ipa === "ai");
+    assert.deepStrictEqual([ai.type, ai.weight, ai.spelledBy, ai.count], ["closing", "heavy", ["ai"], 1]);
+    assert.deepStrictEqual(report.diphthongStats.find((d) => d.ipa === "au").spelledBy, [], "no letter spells au yet");
+
+    throws(() => save([{ first: "a", second: "k" }]), "isn't a vowel");
+    throws(() => save([{ first: "a", second: "i" }, { first: "a", second: "i" }]), "listed twice");
+    throws(() => save([{ first: "a", second: "i", weight: "huge" }]), "heavy or light");
+});
+
+check("a language saved with the older plain list of diphthongs reads it as definitions", () => {
+    const lang = dict.createLanguage({ slug: "old-dph", name: "OldDph" });
+    const phonemes = ["k", "a", "i", "u"].map((ipa) => ({ ipa }));
+    phon.savePhonology(lang.id, { phonemes, graphemes: [], prosody: { diphthongs: "ai au" } });
+    const got = phon.getPhonology(lang.id).prosody;
+    assert.deepStrictEqual(got.diphthong_defs.map((d) => [d.first, d.second, d.weight]), [["a", "i", "heavy"], ["a", "u", "heavy"]]);
+});
+
 check("stress: a rule places it where the spelling doesn't, and marks in the spelling win", () => {
     const lang = dict.createLanguage({ slug: "str", name: "Str" });
     const inventory = ["t", "k", "n", "a", "aː", "ˈ"].map((ipa) => ({ ipa }));

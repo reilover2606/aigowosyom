@@ -719,3 +719,13 @@ dialog.templates-dialog {
 .verb-traits-field .trait-list input {
     width: auto;
 }
+
+/* Small pick-to-add buttons (common diphthongs, diphthongs without a letter) */
+.chip-button {
+    padding: 2px 9px;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.diphthongs select {
+    width: auto;
+}
