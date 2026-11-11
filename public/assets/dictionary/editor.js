@@ -1899,11 +1899,24 @@
 
             const rows = list.map((d) => {
                 const movement = h("span", { class: "hint" }, diphthongMovement(d.first, d.second));
-                const refresh = () => { movement.textContent = diphthongMovement(d.first, d.second); };
+                const written = h("span", { class: "ipa" });
+                // How it is written in a transcription: the nonsyllabic vowel gets ̯ (ai̯).
+                const refresh = () => {
+                    movement.textContent = diphthongMovement(d.first, d.second);
+                    written.textContent = d.nonsyllabic === "first" ? `${d.first}\u032f${d.second}` : d.nonsyllabic === "second" ? `${d.first}${d.second}\u032f` : `${d.first}${d.second}`;
+                };
+                refresh();
                 const spelled = diphthongSpelledBy(d);
                 return h("tr", {},
                     h("td", {}, vowelSelect(d.first, (v) => { d.first = v; refresh(); }), " ", vowelSelect(d.second, (v) => { d.second = v; refresh(); })),
                     h("td", {}, movement),
+                    h("td", {}, h("select", {
+                        title: "Which vowel is nonsyllabic (a glide, written with ̯ below), if either",
+                        onchange: (event) => { d.nonsyllabic = event.target.value; refresh(); }
+                    },
+                        h("option", { value: "", selected: !d.nonsyllabic }, "neither"),
+                        h("option", { value: "first", selected: d.nonsyllabic === "first" }, "the first"),
+                        h("option", { value: "second", selected: d.nonsyllabic === "second" }, "the second")), " ", written),
                     h("td", {}, h("select", { onchange: (event) => { d.weight = event.target.value; } },
                         h("option", { value: "heavy", selected: d.weight !== "light" }, "heavy"),
                         h("option", { value: "light", selected: d.weight === "light" }, "light"))),
@@ -1931,19 +1944,19 @@
                     return;
                 }
                 errorEl.textContent = "";
-                list.push({ first, second, note: "", weight: "heavy" });
+                list.push({ first, second, note: "", weight: "heavy", nonsyllabic: "" });
                 render();
             };
 
             return h("div", { class: "field diphthongs" },
                 h("h3", {}, "Diphthongs"),
-                h("p", { class: "hint" }, "Two vowels spoken as one syllable. Define them here: the Spelling tab can then give a letter or digraph (ai, au) to one, and words are divided into syllables with it as a single nucleus. Vowels in a row that are not listed stay separate syllables (hiatus). A heavy diphthong makes its syllable heavy for the stress rule; set a diphthong light if yours doesn't."),
+                h("p", { class: "hint" }, "Two vowels spoken as one syllable. Define them here: the Spelling tab can then give a letter or digraph (ai, au) to one, and words are divided into syllables with it as a single nucleus. Vowels in a row that are not listed stay separate syllables (hiatus). A heavy diphthong makes its syllable heavy for the stress rule; set a diphthong light if yours doesn't. For a more precise transcription, mark one vowel nonsyllabic: it is then written with ̯ below (ai̯)."),
                 vowels.length < 2 && !list.length
                     ? h("p", { class: "hint" }, "Add at least two vowels above first.")
                     : null,
                 list.length
                     ? h("table", { class: "spelling-edit diphthong-edit" },
-                        h("thead", {}, h("tr", {}, h("th", {}, "Vowels"), h("th", {}, "Movement"), h("th", {}, "Syllable weight"), h("th", {}, "Note"), h("th", {}, "Spelled"), h("th", {}))),
+                        h("thead", {}, h("tr", {}, h("th", {}, "Vowels"), h("th", {}, "Movement"), h("th", {}, "Nonsyllabic vowel"), h("th", {}, "Syllable weight"), h("th", {}, "Note"), h("th", {}, "Spelled"), h("th", {}))),
                         h("tbody", {}, ...rows))
                     : null,
                 vowels.length
@@ -2113,6 +2126,56 @@
             ["weight", "Second to last if heavy, otherwise third to last"]
         ];
 
+        // ---- Pitch accent by rule: which syllables are high or low, and where the pitch goes up or down. ----
+        const PITCH_WHEN = [
+            ["long-or-diphthong", "a long vowel or a diphthong"], ["long", "a long vowel"], ["diphthong", "a diphthong"],
+            ["heavy", "a heavy syllable"], ["closed", "a closed syllable"], ["stressed", "the stressed syllable"],
+            ["first", "the first syllable"], ["last", "the last syllable"]
+        ];
+        const PITCH_FALLBACKS = [
+            ["none", "No pitch pattern"], ["low", "All low"], ["high", "All high"], ["initial-high", "The first syllable high, the rest low"],
+            ["final-high", "The last syllable high, the rest low"], ["penultimate-high", "The second to last syllable high, the rest low"]
+        ];
+
+        function pitchSection(tryWord) {
+            const prosody = draft.prosody;
+            const pitch = prosody.pitch = { enabled: false, anchors: [], before: "L", between: "L", after: "L", fallback: "none", mark_initial: false, ...(prosody.pitch || {}) };
+            const level = (value, onchange) => h("select", { onchange: (event) => onchange(event.target.value) },
+                h("option", { value: "H", selected: value === "H" }, "high"),
+                h("option", { value: "L", selected: value !== "H" }, "low"));
+            const change = () => { prosody.pitch = pitch; tryWord(); };
+
+            const anchorRows = pitch.anchors.map((a) => h("div", { class: "row" },
+                h("span", {}, "A syllable with"),
+                h("select", { onchange: (event) => { a.when = event.target.value; change(); } },
+                    ...PITCH_WHEN.map(([value, label]) => h("option", { value, selected: a.when === value }, label))),
+                h("span", {}, "is"),
+                level(a.pitch, (v) => { a.pitch = v; change(); }),
+                h("button", { type: "button", title: "Remove this rule", onclick: () => { pitch.anchors = pitch.anchors.filter((x) => x !== a); change(); render(); } }, "×")));
+
+            return h("div", { class: "field pitch-rules" },
+                h("h3", {}, "Pitch accent"),
+                h("p", { class: "hint" }, "Rule-based pitch for languages whose accent is a pattern of high and low syllables. Some syllables are pinned (a long vowel or diphthong is always high, say); the rules below say whether the syllables before, between and after the pinned ones are high or low. Where the pitch goes up the transcription marks ꜛ before the syllable, and where it goes down ꜜ. Tones written in a word's spelling take the place of these rules."),
+                h("div", { class: "field check" },
+                    h("input", { type: "checkbox", id: "pitch-on", checked: pitch.enabled, onchange: (event) => { pitch.enabled = event.target.checked; change(); render(); } }),
+                    h("label", { for: "pitch-on" }, "This language has rule-based pitch accent")),
+                pitch.enabled ? h("div", {},
+                    h("p", { class: "hint" }, "Pinned syllables (the first rule that fits a syllable decides):"),
+                    ...anchorRows,
+                    h("div", { class: "row" }, h("button", { type: "button", onclick: () => { pitch.anchors.push({ when: "long-or-diphthong", pitch: "H" }); change(); render(); } }, "Add a rule")),
+                    h("div", { class: "row" }, h("span", {}, "Syllables before the pinned ones are"), level(pitch.before, (v) => { pitch.before = v; change(); })),
+                    h("div", { class: "row" }, h("span", {}, "Syllables between pinned ones are"), level(pitch.between, (v) => { pitch.between = v; change(); })),
+                    h("div", { class: "row" }, h("span", {}, "Syllables after the pinned ones are"), level(pitch.after, (v) => { pitch.after = v; change(); })),
+                    h("div", { class: "field" },
+                        h("label", {}, "A word with no pinned syllable"),
+                        h("select", { onchange: (event) => { pitch.fallback = event.target.value; change(); } },
+                            ...PITCH_FALLBACKS.map(([value, label]) => h("option", { value, selected: pitch.fallback === value }, label)))),
+                    h("div", { class: "field check" },
+                        h("input", { type: "checkbox", id: "pitch-initial", checked: Boolean(pitch.mark_initial), onchange: (event) => { pitch.mark_initial = event.target.checked; change(); } }),
+                        h("label", { for: "pitch-initial" }, "Also mark a word that begins high (ꜛ before its first syllable)")))
+                    : null);
+        }
+
         function prosodyTab() {
             const prosody = draft.prosody;
             const marks = draft.phonemes.filter((p) => p.kind === "stress" || p.kind === "tone");
@@ -2175,6 +2238,7 @@
                         ? h("select", { onchange: (event) => { prosody.stress_mark = event.target.value; tryWord(); } },
                             ...marks.map((p) => h("option", { value: p.ipa, selected: prosody.stress_mark === p.ipa }, `${p.ipa}  ${p.label || p.kind}`)))
                         : h("span", { class: "hint" }, "Add ˈ (or a tone) under Sounds, Tones and stress first.")),
+                pitchSection(tryWord),
                 h("div", { class: "field" },
                     h("label", {}, "Articles in inflected forms", h("span", { class: "hint" }, " — a form with a space in it (an article and a word) is read as separate words, each with its own syllables; stress goes on the word itself and the article is left unstressed")),
                     h("select", { onchange: (event) => { prosody.article_position = event.target.value; tryWord(); } },

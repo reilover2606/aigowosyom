@@ -1020,12 +1020,13 @@ function phonologyPage(res, language) {
     </section>`
         : "";
 
-    const hasProsody = graphemes.length > 0 && (prosody.stress_rule !== "none" || prosody.diphthongs || prosody.onsets || prosody.show_syllables || report.stressPositions.length);
+    const hasProsody = graphemes.length > 0 && (prosody.stress_rule !== "none" || prosody.diphthongs || prosody.pitch.enabled || prosody.onsets || prosody.show_syllables || report.stressPositions.length);
     const syllables = hasProsody && report.transcribed
         ? `<section class="chart-card">
         <h2>Syllables and stress</h2>
         <ul class="plain-list">
             <li>Stress falls on ${esc(STRESS_RULE_TEXT[prosody.stress_rule] || "")}${prosody.stress_rule !== "none" ? ", unless the spelling marks it" : ""}.</li>
+            ${prosody.pitch && prosody.pitch.enabled ? `<li>Pitch accent: ${esc(describePitch(prosody.pitch))}</li>` : ""}
             ${prosody.onsets ? `<li>Consonant clusters that can begin a syllable: ${prosody.onsets.split(" ").map((d) => `<span class="ipa">${esc(d)}</span>`).join(" ")}</li>` : ""}
             ${prosody.max_coda !== null ? `<li>A syllable can end in at most ${prosody.max_coda === 0 ? "no consonants (open syllables)" : `${prosody.max_coda} consonant${prosody.max_coda === 1 ? "" : "s"}`}.</li>` : ""}
         </ul>
@@ -1033,7 +1034,7 @@ function phonologyPage(res, language) {
         <table class="relations spelling-table">
             <thead><tr><th>Diphthong</th><th>Movement</th><th>Syllable weight</th><th>Spelled</th><th>Words</th></tr></thead>
             <tbody>${report.diphthongStats.map((d) => `<tr>
-                <td><span class="ipa">${esc(d.ipa)}</span>${d.note ? ` <span class="muted">${esc(d.note)}</span>` : ""}</td>
+                <td><span class="ipa">${esc(d.written || d.ipa)}</span>${d.nonsyllabic ? ` <span class="muted">(${d.nonsyllabic === "first" ? "first" : "second"} vowel nonsyllabic)</span>` : ""}${d.note ? ` <span class="muted">${esc(d.note)}</span>` : ""}</td>
                 <td>${esc(d.type || "")}</td>
                 <td>${d.weight}</td>
                 <td>${d.spelledBy.length ? d.spelledBy.map((g) => `<span class="conlang">${esc(g)}</span>`).join(", ") : '<span class="muted">no letter yet</span>'}</td>
@@ -1043,6 +1044,7 @@ function phonologyPage(res, language) {
         <div class="two-up">
             <div><h3>Syllable shapes</h3>${charts.barList(report.syllableShapes.map((s) => ({ label: s.shape, count: s.count })))}</div>
             <div><h3>Syllables per word</h3>${charts.barList(report.syllableCounts.map((s) => ({ label: `${s.syllables} syllable${s.syllables === 1 ? "" : "s"}`, count: s.count })))}</div>
+            ${report.pitchPatterns.length ? `<div><h3>Pitch patterns</h3>${charts.barList(report.pitchPatterns.map((s) => ({ label: s.pattern.split("").map((x) => (x === "H" ? "high" : "low")).join(" "), count: s.count })))}</div>` : ""}
             ${report.stressPositions.length ? `<div><h3>Where stress falls</h3>${charts.barList(report.stressPositions.map((s) => ({ label: s.label, count: s.count })))}</div>` : ""}
         </div>
     </section>`
@@ -1345,6 +1347,28 @@ function namesPage(res, language, params) {
     </form>
     ${list}
     ${note}`));
+}
+
+// The pitch accent rules in words.
+const PITCH_WHEN_TEXT = {
+    long: "long vowels", diphthong: "diphthongs", "long-or-diphthong": "long vowels and diphthongs", heavy: "heavy syllables",
+    closed: "closed syllables", stressed: "the stressed syllable", first: "the first syllable", last: "the last syllable"
+};
+const PITCH_FALLBACK_TEXT = {
+    none: "has no pitch pattern", low: "is all low", high: "is all high", "initial-high": "has a high first syllable",
+    "final-high": "has a high last syllable", "penultimate-high": "has a high second-to-last syllable"
+};
+
+function describePitch(pitch) {
+    const level = (x) => (x === "H" ? "high" : "low");
+    const pinned = pitch.anchors.map((a) => `${PITCH_WHEN_TEXT[a.when] || a.when} are ${level(a.pitch)}`);
+    const parts = [];
+    if (pinned.length) {
+        parts.push(`${pinned.join("; ")}. Syllables before them are ${level(pitch.before)}, between them ${level(pitch.between)}, after them ${level(pitch.after)}. A word with none ${PITCH_FALLBACK_TEXT[pitch.fallback] || ""}`);
+    } else {
+        parts.push(`a word ${PITCH_FALLBACK_TEXT[pitch.fallback] || ""}`);
+    }
+    return `${parts.join("")}. A rise is marked ꜛ and a fall ꜜ before the syllable.`;
 }
 
 function editorPage(res) {
