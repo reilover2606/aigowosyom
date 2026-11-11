@@ -855,9 +855,10 @@
         const posList = h("datalist", { id: "pos-suggestions" },
             ...POS_SUGGESTIONS.map((pos) => h("option", { value: pos })));
 
-        // Grammatical gender belongs to nouns: with any other part of speech (proper nouns, personal
-        // names and toponyms included) the box is grayed out. Whatever it holds is kept.
-        const takesGender = (pos) => !(pos || "").trim() || pos.trim().toLowerCase() === "noun";
+        // Gender belongs to nouns and the kinds of noun (proper nouns, personal and family names,
+        // toponyms, pronouns...): with a part of speech that is none of those (a verb, adjective, adverb,
+        // preposition...) the box is grayed out. Whatever it holds is kept.
+        const takesGender = (pos) => !(pos || "").trim() || /noun|name|toponym|place|demonym|ethnonym/i.test(pos);
         let genderSelect = null;
         const genderField = language.has_gender
             ? h("div", { class: "field" },
