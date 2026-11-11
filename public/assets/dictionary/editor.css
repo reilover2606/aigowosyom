@@ -729,3 +729,21 @@ dialog.templates-dialog {
 .diphthongs select {
     width: auto;
 }
+
+/* Pitch accent rules: short rows of text and drop-downs */
+.pitch-rules .row {
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.pitch-rules .row > span {
+    white-space: nowrap;
+}
+
+.pitch-rules select {
+    width: auto;
+}
+
+.pitch-rules .field select {
+    width: 100%;
+}

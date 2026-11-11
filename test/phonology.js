@@ -168,6 +168,74 @@ check("diphthongs are defined one by one: they make one nucleus, can be light, a
     throws(() => save([{ first: "a", second: "i", weight: "huge" }]), "heavy or light");
 });
 
+check("a diphthong can have a nonsyllabic vowel, written with a ̯ in the transcription", () => {
+    const lang = dict.createLanguage({ slug: "nsy", name: "Nsy" });
+    const phonemes = ["t", "k", "a", "i"].map((ipa) => ({ ipa }));
+    const graphemes = ["t", "k", "a", "i"].map((x) => ({ grapheme: x, ipa: x }));
+    const save = (nonsyllabic) => phon.savePhonology(lang.id, {
+        phonemes, graphemes, prosody: { diphthong_defs: [{ first: "a", second: "i", nonsyllabic }], show_syllables: true }
+    });
+    save("second");
+    assert.strictEqual(phon.transcribe(lang.id, "kaita").surface, "/kai̯.ta/");
+    assert.deepStrictEqual(phon.transcribe(lang.id, "kaita").phonemes, ["k", "a", "i", "t", "a"], "the sounds themselves are unchanged");
+    save("first");
+    assert.strictEqual(phon.transcribe(lang.id, "kaita").surface, "/ka̯i.ta/");
+    save("");
+    assert.strictEqual(phon.transcribe(lang.id, "kaita").surface, "/kai.ta/");
+    throws(() => save("both"), "first or the second");
+});
+
+check("rule-based pitch accent: long vowels and diphthongs are pinned high, the rest follow, and changes are marked ꜛ ꜜ", () => {
+    const lang = dict.createLanguage({ slug: "pit", name: "Pit" });
+    const phonemes = ["t", "k", "n", "a", "aː", "i", "u"].map((ipa) => ({ ipa }));
+    const graphemes = [["t", "t"], ["k", "k"], ["n", "n"], ["a", "a"], ["ā", "aː"], ["i", "i"], ["u", "u"]].map(([grapheme, ipa]) => ({ grapheme, ipa }));
+    const rules = { enabled: true, anchors: [{ when: "long-or-diphthong", pitch: "H" }], before: "L", between: "L", after: "L", fallback: "none" };
+    const save = (changes) => phon.savePhonology(lang.id, {
+        phonemes, graphemes, prosody: { show_syllables: true, diphthong_defs: [{ first: "a", second: "i" }], pitch: { ...rules, ...changes } }
+    });
+    const pitches = (word) => phon.transcribe(lang.id, word).syllables.map((s) => s.pitch).join("");
+    const surface = (word) => phon.transcribe(lang.id, word).surface;
+
+    save({});
+    assert.strictEqual(pitches("takātana"), "LHLL", "the long syllable is high; before and after are low");
+    assert.strictEqual(surface("takātana"), "/ta.ꜛkaː.ꜜta.na/", "a rise is marked ꜛ and a fall ꜜ, before the syllable");
+    assert.strictEqual(pitches("kaitanaka"), "HLLL", "a diphthong is pinned high too");
+    assert.strictEqual(surface("kaitanaka"), "/kai.ꜜta.na.ka/", "a word that starts high has nothing to mark at its start");
+    save({ before: "H", after: "H" });
+    assert.strictEqual(surface("takātana"), "/ta.kaː.ta.na/", "all high: no change to mark");
+    save({ before: "L", after: "H" });
+    assert.strictEqual(surface("takātana"), "/ta.ꜛkaː.ta.na/");
+
+    // between two pinned syllables
+    save({ between: "L" });
+    assert.strictEqual(surface("tākatāna"), "/taː.ꜜka.ꜛtaː.ꜜna/");
+    save({ between: "H" });
+    assert.strictEqual(surface("tākatāna"), "/taː.ka.taː.ꜜna/");
+
+    save({ mark_initial: true });
+    assert.strictEqual(surface("kaitanaka"), "/ꜛkai.ꜜta.na.ka/", "unless asked to mark a high start");
+
+    // no pinned syllable: the fallback decides
+    save({ fallback: "none" });
+    assert.strictEqual(surface("tanaka"), "/ta.na.ka/");
+    save({ fallback: "initial-high" });
+    assert.strictEqual(surface("tanaka"), "/ta.ꜜna.ka/");
+    save({ fallback: "final-high" });
+    assert.strictEqual(surface("tanaka"), "/ta.na.ꜛka/");
+
+    // a one-syllable word has nothing to mark; a disabled rule does nothing
+    assert.strictEqual(surface("ta"), "/ta/");
+    save({ enabled: false });
+    assert.strictEqual(surface("takātana"), "/ta.kaː.ta.na/");
+    throws(() => save({ anchors: [{ when: "nowhere", pitch: "H" }] }), "pins");
+    throws(() => save({ before: "X" }), "high or low");
+
+    // the report counts the patterns
+    save({ enabled: true });
+    dict.saveWord(null, lang.id, { headword: "takātana", senses: ["x"] });
+    assert.deepStrictEqual(phon.analyze(lang.id).pitchPatterns, [{ pattern: "LHLL", count: 1 }]);
+});
+
 check("a language saved with the older plain list of diphthongs reads it as definitions", () => {
     const lang = dict.createLanguage({ slug: "old-dph", name: "OldDph" });
     const phonemes = ["k", "a", "i", "u"].map((ipa) => ({ ipa }));
