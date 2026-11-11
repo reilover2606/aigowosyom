@@ -855,12 +855,17 @@
         const posList = h("datalist", { id: "pos-suggestions" },
             ...POS_SUGGESTIONS.map((pos) => h("option", { value: pos })));
 
+        // Grammatical gender belongs to nouns: with any other part of speech (proper nouns, personal
+        // names and toponyms included) the box is grayed out. Whatever it holds is kept.
+        const takesGender = (pos) => !(pos || "").trim() || pos.trim().toLowerCase() === "noun";
+        let genderSelect = null;
         const genderField = language.has_gender
             ? h("div", { class: "field" },
                 h("label", {}, "Gender"),
                 (() => {
                     const select = h("select", {
                         name: "gender",
+                        disabled: !takesGender(draft.pos),
                         onchange: () => {
                             draft.gender = select.value;
                             markDirty();
@@ -868,6 +873,7 @@
                     },
                     ...[["", "—"], ["masculine", "masculine"], ["feminine", "feminine"], ["neuter", "neuter"]]
                         .map(([val, text]) => h("option", { value: val, selected: val === draft.gender }, text)));
+                    genderSelect = select;
                     return select;
                 })())
             : null;
@@ -900,7 +906,13 @@
 
             h("div", { class: "field-grid" },
                 textField("Headword", "headword", { conlang: true }),
-                textField("Part of speech", "pos", { list: "pos-suggestions", onChange: () => { traitsField.hidden = !isVerb(state.draft.pos); } }),
+                textField("Part of speech", "pos", { list: "pos-suggestions", onChange: () => {
+                    traitsField.hidden = !isVerb(state.draft.pos);
+                    if (genderSelect) {
+                        genderSelect.disabled = !takesGender(state.draft.pos);
+                    }
+                    inflectionBox.rerender(); // the tables on offer follow the part of speech
+                } }),
                 genderField
             ),
             posList,
@@ -1296,9 +1308,12 @@
             refreshers.length = 0;
             const templates = state.templates;
             const used = new Set(draft.inflections.map((i) => i.template_id));
-            const free = templates.filter((t) => !used.has(t.id));
-            // Templates for this word's part of speech first.
-            free.sort((a, b) => Number((b.pos || "").toLowerCase() === (draft.pos || "").trim().toLowerCase()) - Number((a.pos || "").toLowerCase() === (draft.pos || "").trim().toLowerCase()) || a.name.localeCompare(b.name));
+            // Only the templates for this word's part of speech, and those with no part of speech
+            // (all of them while the word has none yet).
+            const wordPos = (draft.pos || "").trim().toLowerCase();
+            const fits = (t) => !wordPos || !(t.pos || "").trim() || t.pos.trim().toLowerCase() === wordPos;
+            const free = templates.filter((t) => !used.has(t.id) && fits(t));
+            free.sort((a, b) => Number((b.pos || "").trim().toLowerCase() === wordPos) - Number((a.pos || "").trim().toLowerCase() === wordPos) || a.name.localeCompare(b.name));
 
             const select = h("select", {}, ...free.map((t) => h("option", { value: String(t.id) }, `${t.name}${t.pos ? ` (${t.pos})` : ""}`)));
             const add = () => {
@@ -1358,7 +1373,7 @@
                                 render();
                             }
                         }
-                    }, ...templates.filter((t) => t.id === entry.template_id || !used.has(t.id))
+                    }, ...templates.filter((t) => t.id === entry.template_id || (!used.has(t.id) && fits(t)))
                         .map((t) => h("option", { value: String(t.id), selected: t.id === entry.template_id }, `${t.name}${t.pos ? ` (${t.pos})` : ""}`)));
 
                     return h("div", { class: "inflection-entry" },
@@ -1381,10 +1396,13 @@
                     : free.length
                         ? h("div", { class: "row" }, select, h("button", { type: "button", onclick: add }, "Add a table"),
                             h("button", { type: "button", onclick: () => openTemplatesDialog(language) }, "Edit templates"))
-                        : h("div", { class: "row" }, h("button", { type: "button", onclick: () => openTemplatesDialog(language) }, "Edit templates")));
+                        : h("div", { class: "row" },
+                            h("span", { class: "hint" }, wordPos ? `No more templates for ${wordPos}. ` : ""),
+                            h("button", { type: "button", onclick: () => openTemplatesDialog(language) }, "Edit templates")));
         }
 
         render();
+        box.rerender = render;
         box.refresh = () => refreshers.forEach((f) => f());
         return box;
     }
