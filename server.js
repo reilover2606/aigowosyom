@@ -110,8 +110,33 @@ function sendError(req, res, url, status, message) {
     }
 }
 
+// Slow requests and a blocked event loop are written to the console, so a stall can be traced to the
+// server (and to which request) or ruled out. SLOW_MS (default 300) sets the threshold; 0 turns it off.
+const SLOW_MS = process.env.SLOW_MS === undefined ? 300 : Number(process.env.SLOW_MS);
+
+if (SLOW_MS > 0) {
+    let last = Date.now();
+    setInterval(() => {
+        const now = Date.now();
+        if (now - last - 100 > SLOW_MS) {
+            console.warn(`[slow] the server was busy for ${now - last - 100} ms without answering anything (a long calculation)`);
+        }
+        last = now;
+    }, 100).unref();
+}
+
 const server = http.createServer(async (req, res) => {
     let url = null;
+    const started = Date.now();
+
+    if (SLOW_MS > 0) {
+        res.on("close", () => {
+            const took = Date.now() - started;
+            if (took > SLOW_MS) {
+                console.warn(`[slow] ${req.method} ${req.url} took ${took} ms`);
+            }
+        });
+    }
 
     try {
         url = new URL(req.url, `http://${req.headers.host}`);

@@ -1305,7 +1305,16 @@
         const box = h("div", { class: "inflection-section" });
         const refreshers = [];
 
+        // Which templates fit the word's part of speech right now (an id list), so that typing in the
+        // part of speech only rebuilds the tables when the choice on offer actually changes.
+        let shown = null;
+        const fitting = () => {
+            const pos = (draft.pos || "").trim().toLowerCase();
+            return state.templates.filter((t) => !pos || !(t.pos || "").trim() || t.pos.trim().toLowerCase() === pos).map((t) => t.id).join(",");
+        };
+
         function render() {
+            shown = fitting();
             refreshers.length = 0;
             const templates = state.templates;
             const used = new Set(draft.inflections.map((i) => i.template_id));
@@ -1403,7 +1412,11 @@
         }
 
         render();
-        box.rerender = render;
+        box.rerender = () => {
+            if (fitting() !== shown) {
+                render();
+            }
+        };
         box.refresh = () => refreshers.forEach((f) => f());
         return box;
     }

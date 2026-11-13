@@ -208,3 +208,7 @@ era: Kemairyom
 ```
 
 A locked item's **Delete** button (Dissolve, for a superstate) is grayed out in the editors, with no message; for eras, Delete is grayed while a locked era is ticked. The server also refuses the delete if asked another way (403), and `PUT /api/eras` refuses a list without a locked era. Only deleting the item itself is stopped, not deleting something that contains it (a language with a locked word in it). The file is read again whenever it changes, but an open editor page needs a reload to show a new lock. Implemented in `lib/locks.js`.
+
+### Slow-request log
+
+If something feels slow, the console running the server says whether the server is the cause: any request that takes more than 300 ms is logged (`[slow] GET /dictionary/random?language=kyora took 2210 ms`), and so is a stretch where the server was busy for that long without answering anything (`[slow] the server was busy for 1800 ms ...`, a long calculation). Set `SLOW_MS` to change the threshold (`SLOW_MS=100`) or `SLOW_MS=0` to turn it off. If a stall happens and nothing is logged, the time is being spent in the browser rather than on the server.
