@@ -747,3 +747,23 @@ dialog.templates-dialog {
 .pitch-rules .field select {
     width: 100%;
 }
+
+/* Varieties of the spelling: a second row of tabs under Spelling */
+.variety-tabs {
+    margin-bottom: 8px;
+}
+
+.variety-tabs .variety-add {
+    margin-left: auto;
+}
+
+.variety-new,
+.variety-header .row {
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.variety-new select,
+.variety-header select {
+    width: auto;
+}

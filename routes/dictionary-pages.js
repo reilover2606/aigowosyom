@@ -653,6 +653,17 @@ function renderEntry(word, language, index, multiple) {
         sections.push(wordInflectionHtml(entry, word, language, innerTag));
     }
 
+    // The word read in the language's other varieties of spelling (dialects, earlier and later stages):
+    // closed until opened, so the page isn't crowded.
+    const varieties = phonology.hasOrthography(language.id) ? phonology.transcribeVarieties(language.id, word.headword) : [];
+    if (varieties.length) {
+        sections.push(
+            `<details class="additional-pronunciations"><summary><${innerTag}>Additional pronunciations</${innerTag}></summary><ul>${varieties
+                .map((v) => `<li><span class="variety-name">${esc(v.label)}</span> <span class="ipa">${esc(v.surface)}</span></li>`)
+                .join("")}</ul></details>`
+        );
+    }
+
     if (word.variantOf.length) {
         sections.push(
             `<p class="relation"><strong>Variant of:</strong> ${word.variantOf
@@ -967,7 +978,7 @@ const STRESS_RULE_TEXT = {
 };
 
 function phonologyPage(res, language) {
-    const { phonemes, graphemes, prosody } = phonology.getPhonology(language.id);
+    const { phonemes, graphemes, prosody, varieties } = phonology.getPhonology(language.id);
 
     if (phonemes.length === 0 && graphemes.length === 0) {
         sendHtml(res, 200, languageShell(language, "phonology", `<p class="muted">No sounds or spelling have been set for this language yet.${
@@ -1076,6 +1087,20 @@ function phonologyPage(res, language) {
         <ul class="prosody-list">${[...tones, ...stresses].map((p) => `<li>${ipa(p.ipa)} <span class="muted">${esc(p.label || p.kind)}</span></li>`).join("")}</ul></section>`
         : ""}
     ${spelling}
+    ${varieties.length ? `<section class="chart-card">
+        <h2>Varieties of the spelling</h2>
+        <p class="chart-note">Dialects and earlier or later stages of ${esc(language.name)}. A variety lists only the letters it reads differently; every other letter is read as in the spelling above, which is the standard and the one used everywhere else on the site. Each word's entry page shows its readings under <em>Additional pronunciations</em>.</p>
+        ${varieties.map((v) => `<details class="variety-chart"><summary><strong>${esc(v.label)}</strong> <span class="muted">${v.graphemes.length} ${v.graphemes.length === 1 ? "rule" : "rules"}</span></summary>
+        <table class="relations spelling-table">
+            <thead><tr><th>Letters</th><th>Sound</th><th>When</th><th></th></tr></thead>
+            <tbody>${v.graphemes.map((g) => `<tr>
+                <td><strong class="conlang">${esc(g.grapheme)}</strong></td>
+                <td>${g.ipa === "∅" ? '<span class="muted">silent</span>' : ipa(g.ipa.match(/^[ːˑʰʷʲˠˤʼ\p{M}]/u) ? `+${g.ipa}` : phonology.slashed([g.ipa]))}</td>
+                <td class="when">${whenText({ where: g.where_pos, after: g.after_text, before: g.before_text })}</td>
+                <td class="muted">${esc(g.note || "")}</td>
+            </tr>`).join("")}</tbody>
+        </table></details>`).join("")}
+    </section>` : ""}
     ${syllables}
     ${coverage}
     ${frequency}
