@@ -33,6 +33,21 @@ function clampInt(value, fallback, min, max) {
     return Math.min(max, Math.max(min, n));
 }
 
+// The word as the editor gets it back after a save; when the save is slow, the console says where
+// the time went (see SLOW_MS in server.js).
+function timedJson(id) {
+    const started = process.hrtime.bigint();
+    const word = wordJson(id);
+    const reload = Number(process.hrtime.bigint() - started) / 1e6;
+    const trace = [...dict.lastSaveTrace(), ["reload", reload]];
+    const total = trace.reduce((sum, [, ms]) => sum + ms, 0);
+    const limit = process.env.SLOW_MS === undefined ? 300 : Number(process.env.SLOW_MS);
+    if (limit > 0 && total > limit) {
+        console.warn(`[slow] saving a word: ${trace.map(([label, ms]) => `${label} ${Math.round(ms)} ms`).join(", ")}`);
+    }
+    return word;
+}
+
 module.exports = async function dictionaryApi(req, res, url) {
     if (!url.pathname.startsWith(PREFIX)) {
         return false;
@@ -176,7 +191,8 @@ module.exports = async function dictionaryApi(req, res, url) {
                 parseInteger(data && data.language_id, "language"),
                 data
             );
-            sendJson(res, 201, wordJson(id));
+            const json = timedJson(id);
+            sendJson(res, 201, json);
             return true;
         }
 
@@ -194,7 +210,7 @@ module.exports = async function dictionaryApi(req, res, url) {
 
             if (method === "PUT") {
                 dict.saveWord(id, null, await readJson(req));
-                sendJson(res, 200, wordJson(id));
+                sendJson(res, 200, timedJson(id));
                 return true;
             }
 
