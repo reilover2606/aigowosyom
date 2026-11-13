@@ -118,7 +118,8 @@ if (SLOW_MS > 0) {
     let last = Date.now();
     setInterval(() => {
         const now = Date.now();
-        if (now - last - 100 > SLOW_MS) {
+        // (A gap of many minutes is the computer asleep, not the server busy.)
+        if (now - last - 100 > SLOW_MS && now - last < 120000) {
             console.warn(`[slow] the server was busy for ${now - last - 100} ms without answering anything (a long calculation)`);
         }
         last = now;
