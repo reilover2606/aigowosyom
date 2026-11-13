@@ -2084,7 +2084,7 @@
                 }, 200);
             });
             return h("div", { class: "variety-header" },
-                h("p", { class: "hint" }, "This chart gives the pronunciation of words in this variety. List only the letters that are read differently here: a letter listed replaces the standard's rules for it, and every other letter is read as in the standard spelling, which keeps priority everywhere else on the site (statistics, syllables, correspondences). Entry pages show these readings under “Additional pronunciations”."),
+                h("p", { class: "hint" }, "This chart gives the pronunciation of words in this variety. List only the letters that are read differently here: a letter listed replaces the standard's rules for it, and every other letter is read as in the standard spelling, which keeps priority everywhere else on the site (statistics, syllables, correspondences). Any sound may be entered here, even one the standard inventory lacks (the standard chart is not changed). Entry pages show these readings under “Additional pronunciations”."),
                 h("div", { class: "row" },
                     h("span", {}, "This variety is for"), pick("time", VARIETY_TIMES, "any time"), pick("place", VARIETY_PLACES, "anywhere"),
                     h("span", { class: "spacer" }),
@@ -2118,6 +2118,9 @@
                 if (text === "∅") {
                     return { cls: "ok", text: "silent" };
                 }
+                if (variety && MARK.test(text)) {
+                    return { cls: "ok", text: "joins the sound before it" };
+                }
                 if (MARK.test(text)) {
                     const joins = symbols.filter((x) => x.endsWith(text) && x !== text);
                     return joins.length || symbols.includes(text)
@@ -2125,6 +2128,10 @@
                         : { cls: "bad", text: `no sound in the inventory ends in ${text}` };
                 }
                 const parts = segmentIpa(text, symbols);
+                if (!parts && variety) {
+                    // A variety may use any sound: it need not be in the standard inventory.
+                    return { cls: "ok", text: `/${text}/ (a sound outside the standard inventory)` };
+                }
                 if (!parts) {
                     return { cls: "bad", text: "not in the inventory" };
                 }
