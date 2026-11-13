@@ -606,17 +606,28 @@ function renderEntry(word, language, index, multiple) {
         );
     }
 
+    // The word read in the language's other varieties of spelling (dialects, earlier and later stages),
+    // under the standard pronunciation and closed until opened, so the page isn't crowded.
+    const varieties = phonology.hasOrthography(language.id) ? phonology.transcribeVarieties(language.id, word.headword) : [];
+    const additional = varieties.length
+        ? `<details class="additional-pronunciations"><summary>Additional pronunciations</summary><ul>${varieties
+            .map((v) => `<li><span class="variety-name">${esc(v.label)}</span> <span class="ipa">${esc(v.surface)}</span></li>`)
+            .join("")}</ul></details>`
+        : "";
+
     if (word.pronunciation) {
         sections.push(
-            `<${innerTag}>Pronunciation</${innerTag}><ul><li class="pronunciation conlang">${esc(word.pronunciation)}</li></ul>`
+            `<${innerTag}>Pronunciation</${innerTag}><ul><li class="pronunciation conlang">${esc(word.pronunciation)}</li></ul>${additional}`
         );
     } else {
         // No pronunciation written down: the spelling gives it, if the language has an orthography.
         const spoken = phonology.transcribe(language.id, word.headword);
         if (spoken.complete) {
             sections.push(
-                `<${innerTag}>Pronunciation</${innerTag}><ul><li class="pronunciation"><span class="ipa">${esc(spoken.surface)}</span> <span class="muted">(from the spelling)</span></li></ul>`
+                `<${innerTag}>Pronunciation</${innerTag}><ul><li class="pronunciation"><span class="ipa">${esc(spoken.surface)}</span> <span class="muted">(from the spelling)</span></li></ul>${additional}`
             );
+        } else if (additional) {
+            sections.push(`<${innerTag}>Pronunciation</${innerTag}>${additional}`);
         }
     }
 
@@ -651,17 +662,6 @@ function renderEntry(word, language, index, multiple) {
     // Inflection tables the word follows.
     for (const entry of word.inflections || []) {
         sections.push(wordInflectionHtml(entry, word, language, innerTag));
-    }
-
-    // The word read in the language's other varieties of spelling (dialects, earlier and later stages):
-    // closed until opened, so the page isn't crowded.
-    const varieties = phonology.hasOrthography(language.id) ? phonology.transcribeVarieties(language.id, word.headword) : [];
-    if (varieties.length) {
-        sections.push(
-            `<details class="additional-pronunciations"><summary><${innerTag}>Additional pronunciations</${innerTag}></summary><ul>${varieties
-                .map((v) => `<li><span class="variety-name">${esc(v.label)}</span> <span class="ipa">${esc(v.surface)}</span></li>`)
-                .join("")}</ul></details>`
-        );
     }
 
     if (word.variantOf.length) {
