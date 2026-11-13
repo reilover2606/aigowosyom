@@ -244,6 +244,44 @@ check("a language saved with the older plain list of diphthongs reads it as defi
     assert.deepStrictEqual(got.diphthong_defs.map((d) => [d.first, d.second, d.weight]), [["a", "i", "heavy"], ["a", "u", "heavy"]]);
 });
 
+check("varieties of the spelling: a variety replaces the standard's rules for the letters it lists, the rest read as standard", () => {
+    const lang = dict.createLanguage({ slug: "var", name: "Var" });
+    const phonemes = ["k", "g", "t", "a", "i", "e", "ʃ", "s"].map((ipa) => ({ ipa }));
+    const graphemes = [["k", "k"], ["t", "t"], ["a", "a"], ["i", "i"], ["e", "e"], ["s", "s"], ["g", "ɡ"]].map(([grapheme, ipa]) => ({ grapheme, ipa }));
+    const save = (varieties) => phon.savePhonology(lang.id, { phonemes, graphemes, varieties, prosody: { show_syllables: true } });
+
+    const saved = save([
+        { time: "late", place: "", graphemes: [{ grapheme: "k", ipa: "g" }] },
+        { time: "", place: "north", graphemes: [{ grapheme: "s", ipa: "ʃ" }, { grapheme: "t", ipa: "s", before_text: "i" }] },
+        { time: "early", place: "west", graphemes: [] }
+    ]);
+    assert.deepStrictEqual(saved.varieties.map((v) => v.label), ["Early · West", "Late", "North"], "ordered by time, then place");
+
+    assert.strictEqual(phon.transcribe(lang.id, "kati").surface, "/ka.ti/", "the standard is unchanged");
+    const all = phon.transcribeVarieties(lang.id, "kasti");
+    const by = (label) => all.find((v) => v.label === label).surface;
+    assert.strictEqual(by("Late"), "/ɡas.ti/", "late: k is g");
+    assert.strictEqual(by("North"), "/kaʃ.si/", "north: s is ʃ, and t before i is s");
+    assert.strictEqual(by("Early · West"), "/kas.ti/", "an empty variety reads as the standard");
+
+    // the standard is kept when the page of a variety is saved without varieties being mentioned
+    phon.savePhonology(lang.id, { phonemes, graphemes, prosody: {} });
+    assert.strictEqual(phon.getPhonology(lang.id).varieties.length, 3, "leaving varieties out leaves them alone");
+    save([]);
+    assert.strictEqual(phon.getPhonology(lang.id).varieties.length, 0, "an empty list removes them");
+
+    throws(() => save([{ time: "", place: "", graphemes: [] }]), "a time, a place, or both");
+    throws(() => save([{ time: "someday", graphemes: [] }]), "time must be");
+    throws(() => save([{ time: "early", graphemes: [] }, { time: "early", graphemes: [] }]), "two varieties");
+    throws(() => save([{ place: "east", graphemes: [{ grapheme: "k", ipa: "ŋ" }] }]), "East: ");
+    // a variety's context can name the standard's letters
+    save([{ place: "south", graphemes: [{ grapheme: "k", ipa: "g", after_text: "a, i" }, { grapheme: "k", ipa: "k" }] }]);
+    // read with unsaved data
+    const data = { phonemes, graphemes, varieties: [{ place: "east", graphemes: [{ grapheme: "a", ipa: "e" }] }], prosody: {} };
+    assert.deepStrictEqual(phon.preview(data, "kat", 0).phonemes, ["k", "e", "t"]);
+    assert.deepStrictEqual(phon.preview(data, "kat").phonemes, ["k", "a", "t"]);
+});
+
 check("stress: a rule places it where the spelling doesn't, and marks in the spelling win", () => {
     const lang = dict.createLanguage({ slug: "str", name: "Str" });
     const inventory = ["t", "k", "n", "a", "aː", "ˈ"].map((ipa) => ({ ipa }));

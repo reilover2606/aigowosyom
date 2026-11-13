@@ -1223,12 +1223,12 @@ button.danger {
     color: var(--muted, #54595d);
 }
 
-/* The inflected forms on an entry open and close. */
-details.inflected-forms {
+/* The inflected forms and the additional pronunciations on an entry open and close. */
+details:is(.inflected-forms, .additional-pronunciations) {
     margin: 12px 0;
 }
 
-details.inflected-forms > summary {
+details:is(.inflected-forms, .additional-pronunciations) > summary {
     cursor: pointer;
     list-style: none;
     display: flex;
@@ -1236,11 +1236,11 @@ details.inflected-forms > summary {
     gap: 8px;
 }
 
-details.inflected-forms > summary::-webkit-details-marker {
+details:is(.inflected-forms, .additional-pronunciations) > summary::-webkit-details-marker {
     display: none;
 }
 
-details.inflected-forms > summary::before {
+details:is(.inflected-forms, .additional-pronunciations) > summary::before {
     content: "";
     width: 0.55em;
     height: 0.55em;
@@ -1252,16 +1252,16 @@ details.inflected-forms > summary::before {
     align-self: center;
 }
 
-details.inflected-forms[open] > summary::before {
+details:is(.inflected-forms, .additional-pronunciations)[open] > summary::before {
     transform: rotate(45deg);
 }
 
-details.inflected-forms > summary > * {
+details:is(.inflected-forms, .additional-pronunciations) > summary > * {
     margin: 0;
 }
 
 @media print {
-    details.inflected-forms:not([open]) > :not(summary) {
+    details:is(.inflected-forms, .additional-pronunciations):not([open]) > :not(summary) {
         display: block;
     }
 }
@@ -1289,4 +1289,15 @@ details.inflected-forms > summary > * {
 .name-results li {
     margin: 4px 0;
     font-size: 1.15em;
+}
+
+.additional-pronunciations ul {
+    margin: 6px 0 0;
+}
+
+.additional-pronunciations .variety-name {
+    display: inline-block;
+    min-width: 8em;
+    font-weight: bold;
+    font-size: 0.9em;
 }

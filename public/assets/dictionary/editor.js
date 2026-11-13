@@ -1762,6 +1762,7 @@
 
         const onChart = new Map([...chart.consonants, ...chart.vowels].map((p) => [p.ipa, p]));
         let tab = "sounds";
+        let spellingView = null; // null: the standard spelling; else the index of a variety
         const errorEl = h("div", { class: "status error" });
         const body = h("div", { class: "phonology-body" });
         const tabs = h("div", { class: "tab-row" });
@@ -2013,10 +2014,97 @@
                 customSection());
         }
 
+        // ---- Varieties of the spelling: dialects (north, east, south, west) and stages of the language's
+        // development (early, middle, late), each a chart of its own beside the standard one. ----
+        const VARIETY_TIMES = ["early", "middle", "late"];
+        const VARIETY_PLACES = ["north", "east", "south", "west"];
+        const cap = (x) => x[0].toUpperCase() + x.slice(1);
+        const labelOf = (v) => [v.time, v.place].filter(Boolean).map(cap).join(" · ");
+        let addingVariety = false;
+        draft.varieties = draft.varieties || [];
+
+        function varietyMenu() {
+            const tabsRow = h("div", { class: "tab-row variety-tabs" },
+                h("button", { type: "button", class: spellingView === null ? "active" : "", onclick: () => { spellingView = null; addingVariety = false; render(); } }, "Standard"),
+                ...draft.varieties.map((v, i) => h("button", { type: "button", class: spellingView === i ? "active" : "", onclick: () => { spellingView = i; addingVariety = false; render(); } }, labelOf(v) || "(new)")),
+                h("button", { type: "button", class: "variety-add", onclick: () => { addingVariety = !addingVariety; render(); } }, "+ Add a variety"));
+
+            if (!addingVariety) {
+                return tabsRow;
+            }
+            const select = (values, blank) => h("select", {}, h("option", { value: "" }, blank), ...values.map((x) => h("option", { value: x }, cap(x))));
+            const time = select(VARIETY_TIMES, "any time");
+            const place = select(VARIETY_PLACES, "anywhere");
+            return h("div", {}, tabsRow, h("div", { class: "row variety-new" },
+                h("span", {}, "A variety for"), time, place,
+                h("button", { type: "button", class: "primary", onclick: () => {
+                    const made = { id: null, time: time.value, place: place.value, graphemes: [] };
+                    if (!made.time && !made.place) {
+                        errorEl.textContent = "Pick a time, a place, or both.";
+                        return;
+                    }
+                    if (draft.varieties.some((v) => labelOf(v) === labelOf(made))) {
+                        errorEl.textContent = `There is already a variety called ${labelOf(made)}.`;
+                        return;
+                    }
+                    errorEl.textContent = "";
+                    draft.varieties.push(made);
+                    spellingView = draft.varieties.length - 1;
+                    addingVariety = false;
+                    render();
+                } }, "Add"),
+                h("button", { type: "button", onclick: () => { addingVariety = false; render(); } }, "Cancel")));
+        }
+
+        function varietyHeader(variety) {
+            const pick = (key, values, blank) => h("select", { onchange: (event) => { variety[key] = event.target.value; render(); } },
+                h("option", { value: "" }, blank),
+                ...values.map((x) => h("option", { value: x, selected: variety[key] === x }, cap(x))));
+            const sample = h("input", { type: "text", class: "conlang", size: "14", placeholder: "a word to try", autocomplete: "off" });
+            const result = h("span", { class: "try-result" });
+            let timer = null;
+            sample.addEventListener("input", () => {
+                clearTimeout(timer);
+                timer = setTimeout(async () => {
+                    if (!sample.value.trim()) {
+                        result.textContent = "";
+                        return;
+                    }
+                    try {
+                        const read = await api("POST", "/api/dictionary/phonology-preview", { data: payload(), word: sample.value, variety: spellingView });
+                        const standard = await api("POST", "/api/dictionary/phonology-preview", { data: payload(), word: sample.value });
+                        result.className = `try-result ${read.ipa ? "ok" : "bad"}`;
+                        result.textContent = read.ipa
+                            ? `${read.ipa}${standard.ipa && standard.ipa !== read.ipa ? `   (standard ${standard.ipa})` : ""}`
+                            : read.unknown.length ? `no letter for: ${read.unknown.join(", ")}` : "nothing to read";
+                    } catch (error) {
+                        result.className = "try-result bad";
+                        result.textContent = error.message;
+                    }
+                }, 200);
+            });
+            return h("div", { class: "variety-header" },
+                h("p", { class: "hint" }, "This chart gives the pronunciation of words in this variety. List only the letters that are read differently here: a letter listed replaces the standard's rules for it, and every other letter is read as in the standard spelling, which keeps priority everywhere else on the site (statistics, syllables, correspondences). Entry pages show these readings under “Additional pronunciations”."),
+                h("div", { class: "row" },
+                    h("span", {}, "This variety is for"), pick("time", VARIETY_TIMES, "any time"), pick("place", VARIETY_PLACES, "anywhere"),
+                    h("span", { class: "spacer" }),
+                    h("button", { type: "button", class: "danger", onclick: () => {
+                        if (confirm(`Delete the ${labelOf(variety) || "new"} variety and its ${variety.graphemes.length} rules? (Nothing is final until you save.)`)) {
+                            draft.varieties = draft.varieties.filter((v) => v !== variety);
+                            spellingView = null;
+                            render();
+                        }
+                    } }, "Delete this variety")),
+                h("div", { class: "row" }, h("span", {}, "Try a word:"), sample, result));
+        }
+
         function spellingTab() {
+            // The standard spelling, or one of the varieties (a sub-page of its own).
+            const variety = spellingView === null ? null : draft.varieties[spellingView] || null;
+            const holder = variety || draft;
             const symbols = draft.phonemes.map((p) => p.ipa);
             const spelledSounds = new Set();
-            for (const g of draft.graphemes) {
+            for (const g of holder.graphemes) {
                 (segmentIpa((g.ipa || "").normalize("NFC"), symbols) || []).forEach((x) => spelledSounds.add(x));
             }
             const unspelled = symbols.filter((x) => !spelledSounds.has(x));
@@ -2081,19 +2169,21 @@
                         h("button", {
                             type: "button", title: "Add another rule for this letter (for when it sounds different in some context)",
                             onclick: () => {
-                                const at = draft.graphemes.indexOf(g);
-                                draft.graphemes.splice(at + 1, 0, { grapheme: g.grapheme, ipa: "", note: "", where_pos: null, after_text: "", before_text: "" });
+                                const at = holder.graphemes.indexOf(g);
+                                holder.graphemes.splice(at + 1, 0, { grapheme: g.grapheme, ipa: "", note: "", where_pos: null, after_text: "", before_text: "" });
                                 render();
                             }
                         }, "+"),
                         h("button", {
                             type: "button", title: "Remove this rule",
-                            onclick: () => { draft.graphemes = draft.graphemes.filter((x) => x !== g); render(); }
+                            onclick: () => { holder.graphemes = holder.graphemes.filter((x) => x !== g); render(); }
                         }, "×")));
             };
 
             const classList = h("span", { class: "ipa-small" }, chart.classes.join(", "));
             return h("div", {},
+                varietyMenu(),
+                variety ? varietyHeader(variety) : null,
                 draft.phonemes.length === 0
                     ? h("p", { class: "status error" }, "Choose the language's sounds first (the Sounds tab); each letter then says which of them it stands for.")
                     : null,
@@ -2101,22 +2191,22 @@
                 h("p", { class: "hint" }, "A letter can have more than one rule (the + button): the ones with a context are tried first, in the order shown, and the one with no context is used otherwise. A context can limit a rule to the start or end of a word, to after something, or to before something. Name letters, sounds or classes (", classList, "), separated by commas, and put ! first for “anything but”. A sound that begins with a mark (ʰ ʲ ː) joins the sound before it: with nʰ in the inventory, h after n reads as nʰ."),
                 h("table", { class: "spelling-edit" },
                     h("thead", {}, h("tr", {}, h("th", {}, "Letters"), h("th", {}, "Sound(s)"), h("th", {}, "Where"), h("th", {}, "After"), h("th", {}, "Before"), h("th", {}, "Note"), h("th", {}))),
-                    h("tbody", {}, ...draft.graphemes.map(row))),
+                    h("tbody", {}, ...holder.graphemes.map(row))),
                 h("div", { class: "row" },
                     h("button", {
                         type: "button",
-                        onclick: () => { draft.graphemes.push({ grapheme: "", ipa: "", note: "", where_pos: null, after_text: "", before_text: "" }); render(); }
+                        onclick: () => { holder.graphemes.push({ grapheme: "", ipa: "", note: "", where_pos: null, after_text: "", before_text: "" }); render(); }
                     }, "Add a letter"),
-                    h("button", {
+                    variety ? null : h("button", {
                         type: "button",
                         disabled: unspelled.length === 0,
                         title: "Adds a letter for each sound that has none, using the IPA symbol itself; change them to your spelling",
                         onclick: () => {
-                            unspelled.forEach((x) => draft.graphemes.push({ grapheme: x, ipa: x, note: "", where_pos: null, after_text: "", before_text: "" }));
+                            unspelled.forEach((x) => holder.graphemes.push({ grapheme: x, ipa: x, note: "", where_pos: null, after_text: "", before_text: "" }));
                             render();
                         }
                     }, `Add a letter for each unspelled sound (${unspelled.length})`)),
-                (() => {
+                variety ? null : (() => {
                     const bare = diphthongs().filter((d) => diphthongSpelledBy(d).length === 0);
                     return diphthongs().length
                         ? h("div", { class: "row" },
@@ -2125,11 +2215,11 @@
                                 : "Every diphthong has a letter."),
                             ...bare.map((d) => h("button", {
                                 type: "button", class: "chip-button",
-                                onclick: () => { draft.graphemes.push({ grapheme: d.first + d.second, ipa: d.first + d.second, note: "", where_pos: null, after_text: "", before_text: "" }); render(); }
+                                onclick: () => { holder.graphemes.push({ grapheme: d.first + d.second, ipa: d.first + d.second, note: "", where_pos: null, after_text: "", before_text: "" }); render(); }
                             }, `${d.first}${d.second}`)))
                         : null;
                 })(),
-                unspelled.length
+                !variety && unspelled.length
                     ? h("p", { class: "hint" }, "Sounds with no letter yet: ", ...unspelled.flatMap((x) => [h("span", { class: "ipa" }, x), " "]))
                     : null);
         }
@@ -2144,7 +2234,16 @@
                         grapheme: g.grapheme, ipa: g.ipa, note: g.note,
                         where_pos: g.where_pos || null, after_text: g.after_text || null, before_text: g.before_text || null
                     })),
-                prosody: draft.prosody
+                prosody: draft.prosody,
+                varieties: draft.varieties.map((v) => ({
+                    time: v.time, place: v.place,
+                    graphemes: v.graphemes
+                        .filter((g) => g.grapheme.trim() || g.ipa.trim())
+                        .map((g) => ({
+                            grapheme: g.grapheme, ipa: g.ipa, note: g.note,
+                            where_pos: g.where_pos || null, after_text: g.after_text || null, before_text: g.before_text || null
+                        }))
+                }))
             };
         }
 

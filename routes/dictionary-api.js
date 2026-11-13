@@ -129,10 +129,11 @@ module.exports = async function dictionaryApi(req, res, url) {
         }
     }
 
-    // POST /phonology-preview  { data: <what PUT /phonology takes>, word }  reads a word with unsaved settings
+    // POST /phonology-preview  { data: <what PUT /phonology takes>, word, variety? }  reads a word with unsaved settings
+    //   (variety: an index into data.varieties, to read it in that variety of the spelling)
     if (resource === "phonology-preview" && parts.length === 1 && method === "POST") {
         const body = await readJson(req);
-        const result = phonology.preview(body && body.data, String((body && body.word) || ""));
+        const result = phonology.preview(body && body.data, String((body && body.word) || ""), Number.isInteger(body && body.variety) ? body.variety : null);
         sendJson(res, 200, { ipa: result.surface, phonemes: result.phonemes, unknown: result.unknown, units: result.units });
         return true;
     }
