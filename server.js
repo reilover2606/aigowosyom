@@ -114,6 +114,33 @@ function sendError(req, res, url, status, message) {
 // server (and to which request) or ruled out. SLOW_MS (default 300) sets the threshold; 0 turns it off.
 const SLOW_MS = process.env.SLOW_MS === undefined ? 300 : Number(process.env.SLOW_MS);
 
+// The sizes of the database file and its write-ahead log (a log that has grown huge, because something
+// else has the database open, makes every save slow), for the slow log and the startup line.
+const fs = require("node:fs");
+const pathModule = require("node:path");
+function databaseSizes() {
+    const size = (suffix) => {
+        try {
+            return fs.statSync(pathModule.join(config.DATA_DIR, `worldbuilding.db${suffix}`)).size;
+        } catch {
+            return 0;
+        }
+    };
+    const mb = (bytes) => `${(bytes / 1048576).toFixed(bytes < 10485760 ? 1 : 0)} MB`;
+    return { text: `database ${mb(size(""))}, write-ahead log ${mb(size("-wal"))}`, wal: size("-wal") };
+}
+{
+    const sizes = databaseSizes();
+    if (sizes.wal > 64 * 1048576) {
+        console.warn(`[slow] the write-ahead log is large (${sizes.text}). Another program with the database open (a viewer, a backup or sync tool) can stop it being cleared, and that slows every save.`);
+        try {
+            db.pragma("wal_checkpoint(TRUNCATE)");
+        } catch {
+            // something else has it open: the warning above stands
+        }
+    }
+}
+
 if (SLOW_MS > 0) {
     let last = Date.now();
     setInterval(() => {
@@ -134,7 +161,7 @@ const server = http.createServer(async (req, res) => {
         res.on("close", () => {
             const took = Date.now() - started;
             if (took > SLOW_MS) {
-                console.warn(`[slow] ${req.method} ${req.url} took ${took} ms`);
+                console.warn(`[slow] ${req.method} ${req.url} took ${took} ms (${databaseSizes().text})`);
             }
         });
     }
