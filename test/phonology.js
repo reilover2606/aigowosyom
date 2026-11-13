@@ -273,13 +273,42 @@ check("varieties of the spelling: a variety replaces the standard's rules for th
     throws(() => save([{ time: "", place: "", graphemes: [] }]), "a time, a place, or both");
     throws(() => save([{ time: "someday", graphemes: [] }]), "time must be");
     throws(() => save([{ time: "early", graphemes: [] }, { time: "early", graphemes: [] }]), "two varieties");
-    throws(() => save([{ place: "east", graphemes: [{ grapheme: "k", ipa: "ŋ" }] }]), "East: ");
+    throws(() => save([{ place: "east", graphemes: [{ grapheme: "k", ipa: "§" }] }]), "East: ");
     // a variety's context can name the standard's letters
     save([{ place: "south", graphemes: [{ grapheme: "k", ipa: "g", after_text: "a, i" }, { grapheme: "k", ipa: "k" }] }]);
     // read with unsaved data
     const data = { phonemes, graphemes, varieties: [{ place: "east", graphemes: [{ grapheme: "a", ipa: "e" }] }], prosody: {} };
     assert.deepStrictEqual(phon.preview(data, "kat", 0).phonemes, ["k", "e", "t"]);
     assert.deepStrictEqual(phon.preview(data, "kat").phonemes, ["k", "a", "t"]);
+});
+
+check("a variety can use sounds that are not in the standard inventory", () => {
+    const lang = dict.createLanguage({ slug: "newsounds", name: "NewSounds" });
+    const phonemes = ["k", "t", "n", "a", "i"].map((ipa) => ({ ipa }));
+    const graphemes = ["k", "t", "n", "a", "i", "h", "c"].map((x) => ({ grapheme: x, ipa: x === "h" ? "ʰ" : x === "c" ? "t" : x })).filter((g) => g.grapheme !== "h" && g.grapheme !== "c");
+    const varieties = [{
+        place: "east",
+        graphemes: [
+            { grapheme: "n", ipa: "ŋ", before_text: "k" },            // a sound the standard lacks, in a context
+            { grapheme: "a", ipa: "ɛ" },                              // a vowel it lacks
+            { grapheme: "c", ipa: "t͡ʃ" },                            // an affricate, with a tie bar
+            { grapheme: "h", ipa: "ʰ" }                               // a mark joining the sound before it: kʰ
+        ]
+    }];
+    phon.savePhonology(lang.id, { phonemes, graphemes, varieties, prosody: { show_syllables: true } });
+
+    assert.deepStrictEqual(phon.getPhonology(lang.id).phonemes.map((p) => p.ipa), ["k", "t", "n", "a", "i"], "the standard inventory is untouched");
+    const east = (word) => phon.transcribeVarieties(lang.id, word).map((v) => v.surface)[0];
+    assert.strictEqual(east("tanka"), "/tɛŋ.kɛ/", "the new sounds read, and syllables treat ɛ as a vowel");
+    assert.strictEqual(east("cika"), "/t͡ʃi.kɛ/");
+    assert.strictEqual(east("khi"), "/kʰi/", "h joins the k before it");
+    assert.strictEqual(phon.transcribe(lang.id, "tanka").surface, "/tan.ka/", "the standard doesn't read them");
+    assert.strictEqual(phon.transcribe(lang.id, "cika").surface, null, "c has no letter in the standard, so it isn't complete there");
+
+    // a context in a variety may name one of its own new sounds
+    phon.savePhonology(lang.id, { phonemes, graphemes, varieties: [{ time: "late", graphemes: [{ grapheme: "n", ipa: "ŋ" }, { grapheme: "t", ipa: "d", after_text: "ŋ" }, { grapheme: "t", ipa: "t" }] }], prosody: {} });
+    assert.strictEqual(phon.transcribeVarieties(lang.id, "tanta")[0].surface, "/taŋda/", "a context can name the variety's own new sound");
+    throws(() => phon.savePhonology(lang.id, { phonemes, graphemes, varieties: [{ time: "late", graphemes: [{ grapheme: "n", ipa: "12" }] }], prosody: {} }), "isn't a sound");
 });
 
 check("stress: a rule places it where the spelling doesn't, and marks in the spelling win", () => {
