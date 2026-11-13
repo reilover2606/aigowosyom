@@ -213,3 +213,9 @@ A locked item's **Delete** button (Dissolve, for a superstate) is grayed out in 
 ### Slow-request log
 
 If something feels slow, the console running the server says whether the server is the cause: any request that takes more than 300 ms is logged (`[slow] GET /dictionary/random?language=kyora took 2210 ms`), and so is a stretch where the server was busy for that long without answering anything (`[slow] the server was busy for 1800 ms ...`, a long calculation). Set `SLOW_MS` to change the threshold (`SLOW_MS=100`) or `SLOW_MS=0` to turn it off. If a stall happens and nothing is logged, the time is being spent in the browser rather than on the server.
+
+The log ignores a gap of two minutes or more in the busy-server check, since that is the computer asleep (a laptop closing its lid showed up as a five-hour stall).
+
+### Search indexes
+
+The three full-text indexes (dictionary, lore, calendar notes) are keyed by row number = the id of the entry they index, so saving or deleting an entry updates its index row directly instead of scanning the whole index. (Before, each save scanned every entry's text: about 18 ms at 36,000 long entries on a fast disk, and far worse when the index isn't in memory.) Databases from earlier versions are rebuilt once on the first start after the update (about a second per 36,000 entries); `app_meta` records that it was done.
