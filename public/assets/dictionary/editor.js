@@ -2084,7 +2084,7 @@
                 }, 200);
             });
             return h("div", { class: "variety-header" },
-                h("p", { class: "hint" }, "This chart gives the pronunciation of words in this variety. List only the letters that are read differently here: a letter listed replaces the standard's rules for it, and every other letter is read as in the standard spelling, which keeps priority everywhere else on the site (statistics, syllables, correspondences). Any sound may be entered here, even one the standard inventory lacks (the standard chart is not changed). Entry pages show these readings under “Additional pronunciations”."),
+                h("p", { class: "hint" }, "This chart gives the pronunciation of words in this variety. List only what is read differently here. A rule with a context (after n, before i, at the start…) changes just those places, and the standard's rules for that letter still apply everywhere else; a rule with no context replaces the letter's standard rules altogether. Every letter not listed is read as in the standard spelling, which keeps priority everywhere else on the site (statistics, syllables, correspondences). Any sound may be entered here, even one the standard inventory lacks (the standard chart is not changed). Entry pages show these readings under “Additional pronunciations”."),
                 h("div", { class: "row" },
                     h("span", {}, "This variety is for"), pick("time", VARIETY_TIMES, "any time"), pick("place", VARIETY_PLACES, "anywhere"),
                     h("span", { class: "spacer" }),

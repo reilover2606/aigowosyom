@@ -264,6 +264,13 @@ check("varieties of the spelling: a variety replaces the standard's rules for th
     assert.strictEqual(by("North"), "/kaʃ.si/", "north: s is ʃ, and t before i is s");
     assert.strictEqual(by("Early · West"), "/kas.ti/", "an empty variety reads as the standard");
 
+    // a variety that gives a letter only context rules changes just those places: elsewhere the standard applies
+    const north = (word) => (phon.transcribeVarieties(lang.id, word).find((v) => v.label === "North") || {}).surface;
+    assert.strictEqual(north("kasta"), "/kaʃ.ta/", "t before a has no North rule, so it is read as in the standard");
+    assert.strictEqual(north("kati"), "/ka.si/", "t before i has one");
+    // a rule with no context replaces the letter altogether
+    assert.strictEqual((phon.transcribeVarieties(lang.id, "kati").find((v) => v.label === "Late") || {}).surface, "/ɡa.ti/");
+
     // the standard is kept when the page of a variety is saved without varieties being mentioned
     phon.savePhonology(lang.id, { phonemes, graphemes, prosody: {} });
     assert.strictEqual(phon.getPhonology(lang.id).varieties.length, 3, "leaving varieties out leaves them alone");

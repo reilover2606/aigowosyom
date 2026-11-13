@@ -1223,12 +1223,12 @@ button.danger {
     color: var(--muted, #54595d);
 }
 
-/* The inflected forms and the additional pronunciations on an entry open and close. */
-details:is(.inflected-forms, .additional-pronunciations) {
+/* The inflected forms on an entry open and close. */
+details.inflected-forms {
     margin: 12px 0;
 }
 
-details:is(.inflected-forms, .additional-pronunciations) > summary {
+details.inflected-forms > summary {
     cursor: pointer;
     list-style: none;
     display: flex;
@@ -1236,11 +1236,11 @@ details:is(.inflected-forms, .additional-pronunciations) > summary {
     gap: 8px;
 }
 
-details:is(.inflected-forms, .additional-pronunciations) > summary::-webkit-details-marker {
+details.inflected-forms > summary::-webkit-details-marker {
     display: none;
 }
 
-details:is(.inflected-forms, .additional-pronunciations) > summary::before {
+details.inflected-forms > summary::before {
     content: "";
     width: 0.55em;
     height: 0.55em;
@@ -1252,16 +1252,16 @@ details:is(.inflected-forms, .additional-pronunciations) > summary::before {
     align-self: center;
 }
 
-details:is(.inflected-forms, .additional-pronunciations)[open] > summary::before {
+details.inflected-forms[open] > summary::before {
     transform: rotate(45deg);
 }
 
-details:is(.inflected-forms, .additional-pronunciations) > summary > * {
+details.inflected-forms > summary > * {
     margin: 0;
 }
 
 @media print {
-    details:is(.inflected-forms, .additional-pronunciations):not([open]) > :not(summary) {
+    details.inflected-forms:not([open]) > :not(summary) {
         display: block;
     }
 }
@@ -1291,13 +1291,52 @@ details:is(.inflected-forms, .additional-pronunciations) > summary > * {
     font-size: 1.15em;
 }
 
-.additional-pronunciations ul {
-    margin: 6px 0 0;
+/* Additional pronunciations: a quiet line under the standard pronunciation, closed until opened. */
+details.additional-pronunciations {
+    margin: -4px 0 10px;
+    font-size: 0.85em;
+    color: var(--muted, #54595d);
 }
 
-.additional-pronunciations .variety-name {
+details.additional-pronunciations > summary {
+    cursor: pointer;
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+details.additional-pronunciations > summary::-webkit-details-marker {
+    display: none;
+}
+
+details.additional-pronunciations > summary::before {
+    content: "";
+    width: 0.4em;
+    height: 0.4em;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 0.15s;
+}
+
+details.additional-pronunciations[open] > summary::before {
+    transform: rotate(45deg);
+}
+
+details.additional-pronunciations ul {
+    margin: 4px 0 0 1.4em;
+    padding: 0;
+    list-style: none;
+}
+
+details.additional-pronunciations .variety-name {
     display: inline-block;
-    min-width: 8em;
-    font-weight: bold;
-    font-size: 0.9em;
+    min-width: 7em;
+}
+
+@media print {
+    details.additional-pronunciations:not([open]) > :not(summary) {
+        display: block;
+    }
 }
