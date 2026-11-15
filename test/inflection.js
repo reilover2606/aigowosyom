@@ -101,4 +101,54 @@ check("a language can have several templates for one part of speech, and deletin
     assert.strictEqual(dict.loadWord(id).inflections.length, 0);
 });
 
+check("changing a template's layout moves the words' own forms with their cells instead of losing them", () => {
+    const person = { name: "Person", values: ["1st", "2nd", "3rd"] };
+    const number = { name: "Number", values: ["sg", "pl"] };
+    const base = inflection.createTemplate(lang.id, { name: "Movable", pos: "noun", rows: [person], cols: [number], cells: {} });
+    const id = dict.saveWord(null, lang.id, {
+        headword: "mova", senses: ["x"],
+        inflections: [{ template_id: base.id, overrides: { "0|0": "a", "1|1": "b", "2|0": "c" } }]
+    });
+    const overrides = () => dict.loadWord(id).inflections[0].overrides;
+    const update = (rows, cols) => inflection.updateTemplate(base.id, { name: "Movable", pos: "noun", rows, cols, cells: {} });
+
+    // a value inserted in the middle: later ones shift
+    let result = update([person], [{ name: "Number", values: ["sg", "dual", "pl"] }]);
+    assert.deepStrictEqual(overrides(), { "0|0": "a", "1|2": "b", "2|0": "c" }, "pl moved from column 1 to 2");
+    assert.deepStrictEqual(result.moved, { kept: 3, lost: 0 });
+
+    // a value renamed keeps its place
+    const numbers = [{ name: "Number", values: ["sg", "dual", "pl"] }];
+    result = update([{ name: "Person", values: ["1st", "2nd", "third"] }], numbers);
+    assert.deepStrictEqual(overrides(), { "0|0": "a", "1|2": "b", "2|0": "c" });
+    assert.deepStrictEqual(result.moved, { kept: 3, lost: 0 });
+
+    // rows reordered, one value removed (its form can't stay)
+    result = update([{ name: "Person", values: ["third", "1st"] }], numbers);
+    assert.deepStrictEqual(overrides(), { "1|0": "a", "0|0": "c" }, "third moved up; 2nd's form is gone");
+    assert.deepStrictEqual(result.moved, { kept: 2, lost: 1 });
+
+    // a category added starts at its first value; a category moved to the other side follows
+    update([], [{ name: "Number", values: ["sg", "dual", "pl"] }, { name: "Person", values: ["third", "1st"] }]);
+    assert.deepStrictEqual(overrides(), { "|0.1": "a", "|0.0": "c" });
+    update([{ name: "Tense", values: ["now", "then"] }], [{ name: "Number", values: ["sg", "dual", "pl"] }, { name: "Person", values: ["third", "1st"] }]);
+    assert.deepStrictEqual(overrides(), { "0|0.1": "a", "0|0.0": "c" });
+
+    // a category removed: only the forms at its first value stay (here, all of them were at singular)
+    result = update([{ name: "Tense", values: ["now", "then"] }], [{ name: "Person", values: ["third", "1st"] }]);
+    assert.deepStrictEqual(overrides(), { "0|0": "c", "0|1": "a" });
+    assert.deepStrictEqual(result.moved, { kept: 2, lost: 0 });
+    // ...and when forms end up in one cell, the first stays
+    result = update([{ name: "Tense", values: ["now", "then"] }], []);
+    assert.deepStrictEqual(overrides(), { "0|": "c" });
+    assert.deepStrictEqual(result.moved, { kept: 1, lost: 1 });
+    update([{ name: "Tense", values: ["now", "then"] }], [{ name: "Person", values: ["third", "1st"] }]);
+    assert.deepStrictEqual(overrides(), { "0|0": "c" });
+
+    // changing only the patterns or the name leaves the forms alone
+    result = inflection.updateTemplate(base.id, { name: "Renamed", pos: "noun", rows: [{ name: "Tense", values: ["now", "then"] }], cols: [{ name: "Person", values: ["third", "1st"] }], cells: { "0|0": "{stem}x" } });
+    assert.deepStrictEqual(overrides(), { "0|0": "c" });
+    assert.deepStrictEqual(result.moved, { kept: 0, lost: 0 });
+});
+
 console.log(`\n${passed} checks passed`);

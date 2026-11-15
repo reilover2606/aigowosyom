@@ -1654,6 +1654,12 @@
                 dirty = false;
                 render();
                 errorEl.textContent = "";
+                // Where the layout changed, the words' own forms moved with their cells.
+                const moved = saved.moved || { kept: 0, lost: 0 };
+                if (moved.kept || moved.lost) {
+                    errorEl.textContent = `Saved. ${moved.kept} of the words' own forms followed their cells to the new layout` +
+                        (moved.lost ? `; ${moved.lost} had no place in it and were removed.` : ".");
+                }
             } catch (error) {
                 errorEl.textContent = error.message;
             }

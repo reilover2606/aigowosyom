@@ -511,42 +511,60 @@ function statsPage(res, language) {
 // covers) and across the top. `cell(key)` gives the HTML for the cell at a key; "own" marks a word's own
 // form. `paths` of the template's rows and columns give the order.
 function inflectionTableHtml(template, cell, { caption = true } = {}) {
-    const rowPaths = inflection.paths(template.rows);
-    const colPaths = inflection.paths(template.cols);
-    const R = template.rows.length;
-    const C = template.cols.length;
+    return inflectionTablesHtml([{ template, cell }], { caption });
+}
+
+// One table for one or more templates that share their rows (and how many levels of columns they have):
+// the row headings are shown once and each template's columns follow side by side, the first column of
+// each set marked (data-part) so it can be set off by a line. `parts` is [{ template, cell(key) }].
+function inflectionTablesHtml(parts, { caption = true } = {}) {
+    const first = parts[0].template;
+    const rowPaths = inflection.paths(first.rows);
+    const R = first.rows.length;
+    const C = first.cols.length;
+    const colPathsOf = (template) => inflection.paths(template.cols);
 
     // How many leaf rows/columns each level's header cell covers.
     const span = (dims, level) => dims.slice(level + 1).reduce((n, dim) => n * dim.values.length, 1);
+    const partMark = (index) => (index > 0 ? " data-part" : "");
 
     let head = "";
     if (C === 0) {
-        head = `<tr>${R ? template.rows.map((d) => `<th class="axis" scope="col">${esc(d.name)}</th>`).join("") : ""}<th scope="col">Form</th></tr>`;
+        head = `<tr>${R ? first.rows.map((d) => `<th class="axis" scope="col">${esc(d.name)}</th>`).join("") : ""}${
+            parts.map((part, index) => `<th scope="col"${partMark(index)}>Form</th>`).join("")}</tr>`;
     } else {
-        const corner = R ? esc(template.rows.map((d) => d.name).join(" / ")) : "";
+        const corner = R ? esc(first.rows.map((d) => d.name).join(" / ")) : "";
         for (let level = 0; level < C; level++) {
-            const headers = colPaths
+            const headers = parts.flatMap((part, index) => colPathsOf(part.template)
                 .filter((path) => path.slice(level + 1).every((i) => i === 0))
-                .map((path) => `<th scope="col" colspan="${span(template.cols, level)}">${esc(template.cols[level].values[path[level]])}</th>`);
+                .map((path, k) => `<th scope="col" colspan="${span(part.template.cols, level)}"${k === 0 ? partMark(index) : ""}>${esc(part.template.cols[level].values[path[level]])}</th>`));
             head += `<tr>${level === 0 && R ? `<th class="corner" rowspan="${C}" colspan="${R}">${corner}</th>` : ""}${headers.join("")}</tr>`;
         }
     }
 
     let body = "";
     rowPaths.forEach((row) => {
-        const heads = template.rows
+        const heads = first.rows
             .map((dim, level) => (row.slice(level + 1).every((i) => i === 0)
-                ? `<th scope="row" rowspan="${span(template.rows, level)}">${esc(dim.values[row[level]])}</th>`
+                ? `<th scope="row" rowspan="${span(first.rows, level)}">${esc(dim.values[row[level]])}</th>`
                 : ""))
             .join("");
-        const cells = (colPaths.length ? colPaths : [[]]).map((col) => cell(inflection.cellKey(row, col))).join("");
+        const cells = parts.map((part, index) => {
+            const colPaths = colPathsOf(part.template);
+            return (colPaths.length ? colPaths : [[]])
+                .map((col, k) => {
+                    const html = part.cell(inflection.cellKey(row, col));
+                    return k === 0 && index > 0 ? html.replace("<td", "<td data-part") : html;
+                })
+                .join("");
+        }).join("");
         body += `<tr>${heads}${cells}</tr>`;
     });
 
-    const names = [
-        R ? `Rows: ${template.rows.map((d) => d.name).join(", ")}` : "",
-        C ? `Columns: ${template.cols.map((d) => d.name).join(", ")}` : ""
-    ].filter(Boolean).join(" · ");
+    const names = parts.length === 1 ? [
+        R ? `Rows: ${first.rows.map((d) => d.name).join(", ")}` : "",
+        C ? `Columns: ${first.cols.map((d) => d.name).join(", ")}` : ""
+    ].filter(Boolean).join(" · ") : "";
 
     return `<div class="inflection-scroll"><table class="inflection-table">
         ${names && caption ? `<caption>${esc(names)}</caption>` : ""}
@@ -555,25 +573,42 @@ function inflectionTableHtml(template, cell, { caption = true } = {}) {
     </table></div>`;
 }
 
-// One word's table, with the forms (and their pronunciation when the language has a spelling).
-function wordInflectionHtml(entry, word, language, headingTag) {
-    const template = entry.template;
-    if (!template) {
+// All of a word's tables under one "Inflected forms" (which opens and closes), with the forms (and their
+// pronunciation when the language has a spelling). Tables whose rows are alike are joined into one,
+// side by side; the template's name and notes are for the editor, not the reader.
+function wordInflectionsHtml(entries, word, language, headingTag) {
+    const parts = (entries || []).filter((entry) => entry.template).map((entry) => {
+        const template = entry.template;
+        const table = inflection.tableFor(template, { headword: word.headword, stem: entry.stem, overrides: entry.overrides });
+        const forms = new Map(table.rows.flatMap((row) => row.cells.map((c) => [c.key, c])));
+        return {
+            template,
+            cell: (key) => {
+                const c = forms.get(key) || { form: null, source: null };
+                if (!c.form) {
+                    return `<td class="none">${c.source ? '<span class="muted">—</span>' : ""}</td>`;
+                }
+                const spoken = phonology.hasOrthography(language.id) ? phonology.transcribe(language.id, c.form) : null;
+                return `<td class="${c.source === "own" ? "own" : ""}"><span class="conlang" lang="${esc(language.slug)}">${esc(c.form)}</span>${
+                    spoken && spoken.complete ? `<span class="ipa form-ipa">${esc(spoken.surface)}</span>` : ""
+                }</td>`;
+            }
+        };
+    });
+    if (!parts.length) {
         return "";
     }
-    const table = inflection.tableFor(template, { headword: word.headword, stem: entry.stem, overrides: entry.overrides });
-    const forms = new Map(table.rows.flatMap((row) => row.cells.map((c) => [c.key, c])));
-    const html = inflectionTableHtml(template, (key) => {
-        const c = forms.get(key) || { form: null, source: null };
-        if (!c.form) {
-            return `<td class="none">${c.source ? '<span class="muted">—</span>' : ""}</td>`;
+
+    const groups = new Map();
+    for (const part of parts) {
+        const key = `${JSON.stringify(part.template.rows)}#${part.template.cols.length}`;
+        if (!groups.has(key)) {
+            groups.set(key, []);
         }
-        const spoken = phonology.hasOrthography(language.id) ? phonology.transcribe(language.id, c.form) : null;
-        return `<td class="${c.source === "own" ? "own" : ""}"><span class="conlang" lang="${esc(language.slug)}">${esc(c.form)}</span>${
-            spoken && spoken.complete ? `<span class="ipa form-ipa">${esc(spoken.surface)}</span>` : ""
-        }</td>`;
-    }, { caption: false });
-    // The template's name and notes are for the editor; readers just see "Inflected forms", which opens and closes.
+        groups.get(key).push(part);
+    }
+    const html = [...groups.values()].map((group) => inflectionTablesHtml(group, { caption: false })).join("");
+
     return `<details class="inflected-forms" open><summary><${headingTag}>Inflected forms</${headingTag}></summary>${html}</details>`;
 }
 
@@ -596,9 +631,6 @@ function renderEntry(word, language, index, multiple) {
         }
         if (word.etymology) {
             body += `<p>${renderText(word.etymology, language.slug)}</p>`;
-        }
-        if (!body) {
-            body = '<p class="muted">No etymology recorded.</p>';
         }
 
         sections.push(
@@ -660,8 +692,9 @@ function renderEntry(word, language, index, multiple) {
     );
 
     // Inflection tables the word follows.
-    for (const entry of word.inflections || []) {
-        sections.push(wordInflectionHtml(entry, word, language, innerTag));
+    const inflected = wordInflectionsHtml(word.inflections, word, language, innerTag);
+    if (inflected) {
+        sections.push(inflected);
     }
 
     if (word.variantOf.length) {
