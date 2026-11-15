@@ -619,7 +619,16 @@ function wordInflectionsHtml(entries, word, language, headingTag) {
         }
         groups.get(key).push(part);
     }
-    const html = [...groups.values()].map((group) => inflectionTablesHtml(group, { caption: false })).join("");
+    // Tables with alike rows are joined side by side, but only once: two to a table, so that a table
+    // never runs wider than the page; a third goes into the next table, which may take a fourth.
+    const tables = [...groups.values()].flatMap((group) => {
+        const pairs = [];
+        for (let i = 0; i < group.length; i += 2) {
+            pairs.push(group.slice(i, i + 2));
+        }
+        return pairs;
+    });
+    const html = tables.map((table) => inflectionTablesHtml(table, { caption: false })).join("");
 
     return `<details class="inflected-forms" open><summary><${headingTag}>Inflected forms</${headingTag}></summary>${html}</details>`;
 }
