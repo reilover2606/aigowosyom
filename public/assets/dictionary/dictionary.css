@@ -1203,6 +1203,15 @@ button.danger {
     white-space: nowrap;
 }
 
+/* Tables joined side by side: a quiet line between one template's columns and the next */
+.inflection-table [data-part] {
+    border-left: 2px solid var(--border, #c8ccd1);
+}
+
+.inflection-scroll + .inflection-scroll {
+    margin-top: 10px;
+}
+
 .inflection-table th.corner {
     font-size: 0.8em;
     color: var(--muted, #54595d);
