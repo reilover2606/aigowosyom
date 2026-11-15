@@ -153,9 +153,32 @@ if (SLOW_MS > 0) {
     }, 100).unref();
 }
 
+// The write-ahead log is copied into the database file when the server has been quiet for a few
+// seconds, so the (slow, on some disks) wait for the disk happens between saves rather than in one.
+let lastRequestAt = Date.now();
+setInterval(() => {
+    if (Date.now() - lastRequestAt < 5000) {
+        return;
+    }
+    const sizes = databaseSizes();
+    if (sizes.wal < 1048576) {
+        return;
+    }
+    const began = Date.now();
+    try {
+        db.pragma("wal_checkpoint(PASSIVE)");
+    } catch {
+        return; // something has the database open: try again later
+    }
+    if (SLOW_MS > 0 && Date.now() - began > SLOW_MS) {
+        console.warn(`[slow] copying the write-ahead log into the database while idle took ${Date.now() - began} ms (${sizes.text}): the disk is slow to confirm writes`);
+    }
+}, 10000).unref();
+
 const server = http.createServer(async (req, res) => {
     let url = null;
     const started = Date.now();
+    lastRequestAt = started;
 
     if (SLOW_MS > 0) {
         res.on("close", () => {
