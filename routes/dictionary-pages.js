@@ -528,6 +528,18 @@ function inflectionTablesHtml(parts, { caption = true } = {}) {
     const span = (dims, level) => dims.slice(level + 1).reduce((n, dim) => n * dim.values.length, 1);
     const partMark = (index) => (index > 0 ? " data-part" : "");
 
+    // An optional label over a template's columns, in a row of its own at the very top (left out when
+    // none of the templates here has one).
+    const labelled = parts.some((part) => part.template.label);
+    const labelRow = labelled
+        ? `<tr class="table-label">${R ? `<th class="corner" colspan="${R}"></th>` : ""}${parts.map((part, index) => {
+            const width = (colPathsOf(part.template).length || 1);
+            return part.template.label
+                ? `<th scope="colgroup" class="label" colspan="${width}"${partMark(index)}>${esc(part.template.label)}</th>`
+                : `<th colspan="${width}"${partMark(index)}></th>`;
+        }).join("")}</tr>`
+        : "";
+
     let head = "";
     if (C === 0) {
         head = `<tr>${R ? first.rows.map((d) => `<th class="axis" scope="col">${esc(d.name)}</th>`).join("") : ""}${
@@ -568,7 +580,7 @@ function inflectionTablesHtml(parts, { caption = true } = {}) {
 
     return `<div class="inflection-scroll"><table class="inflection-table">
         ${names && caption ? `<caption>${esc(names)}</caption>` : ""}
-        <thead>${head}</thead>
+        <thead>${labelRow}${head}</thead>
         <tbody>${body}</tbody>
     </table></div>`;
 }

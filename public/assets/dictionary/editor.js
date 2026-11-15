@@ -1246,6 +1246,12 @@
         const span = (dims, level) => dims.slice(level + 1).reduce((n, dim) => n * dim.values.length, 1);
 
         const head = [];
+        // The template's label, if it has one, in a row of its own over the whole table.
+        if ((template.label || "").trim()) {
+            head.push(h("tr", { class: "table-label" },
+                R ? h("th", { class: "corner", colspan: String(R) }) : null,
+                h("th", { class: "label", colspan: String(colPaths.length || 1) }, template.label)));
+        }
         if (C === 0) {
             head.push(h("tr", {}, ...template.rows.map((d) => h("th", { class: "axis" }, d.name)), h("th", {}, "Form")));
         } else {
@@ -1467,7 +1473,7 @@
             return;
         }
 
-        const blank = () => ({ id: null, name: "", pos: "", description: "", stem_remove: "", rows: [], cols: [], cells: {}, words: 0 });
+        const blank = () => ({ id: null, name: "", pos: "", description: "", stem_remove: "", label: "", rows: [], cols: [], cells: {}, words: 0 });
         const clone = (t) => JSON.parse(JSON.stringify(t));
         let draft = templates.length ? clone(templates[0]) : blank();
         let dirty = false;
@@ -1627,6 +1633,8 @@
                     h("div", { class: "field" }, h("label", {}, "Stem removal", h("span", { class: "hint" }, " — -a takes -a off the end of the headword to give the stem; ge- takes it off the start")),
                         h("input", { type: "text", value: draft.stem_remove, size: "8", autocomplete: "off", oninput: (event) => { draft.stem_remove = event.target.value; touch(); } }))),
                 patternPos,
+                h("div", { class: "field" }, h("label", {}, "Label over the table", h("span", { class: "hint" }, " — optional; shown in a cell at the very top of the table on entries, and left out if empty")),
+                    h("input", { type: "text", value: draft.label || "", placeholder: "e.g. Indicative", autocomplete: "off", oninput: (event) => { draft.label = event.target.value; touch(); renderGridOnly(); } })),
                 h("div", { class: "field" }, h("label", {}, "Notes", h("span", { class: "hint" }, " — which words follow this pattern, how it differs from the others")),
                     h("textarea", { rows: "2", oninput: (event) => { draft.description = event.target.value; touch(); } }, draft.description)),
                 draft.rows.length === 0 && draft.cols.length === 0 && Object.keys(draft.cells).length === 0
@@ -1645,7 +1653,7 @@
         async function save() {
             errorEl.textContent = "";
             try {
-                const payload = { name: draft.name, pos: draft.pos, description: draft.description, stem_remove: draft.stem_remove, rows: draft.rows, cols: draft.cols, cells: draft.cells };
+                const payload = { name: draft.name, pos: draft.pos, description: draft.description, stem_remove: draft.stem_remove, label: draft.label || "", rows: draft.rows, cols: draft.cols, cells: draft.cells };
                 const saved = draft.id
                     ? await api("PUT", `/api/dictionary/inflection-templates/${draft.id}`, payload)
                     : await api("POST", "/api/dictionary/inflection-templates", { ...payload, language_id: language.id });
