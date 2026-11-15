@@ -151,4 +151,14 @@ check("changing a template's layout moves the words' own forms with their cells 
     assert.deepStrictEqual(result.moved, { kept: 0, lost: 0 });
 });
 
+check("a template can have a label (shown over its table), or none", () => {
+    const rows = [{ name: "Case", values: ["nom", "acc"] }];
+    const plain = inflection.createTemplate(lang.id, { name: "NoLabel", rows, cols: [], cells: {} });
+    assert.strictEqual(plain.label, "", "no label unless one is given");
+    const labelled = inflection.createTemplate(lang.id, { name: "WithLabel", label: "  Indicative  ", rows, cols: [], cells: {} });
+    assert.strictEqual(labelled.label, "Indicative");
+    assert.strictEqual(inflection.updateTemplate(labelled.id, { name: "WithLabel", label: "", rows, cols: [], cells: {} }).label, "", "it can be cleared");
+    throws(() => inflection.createTemplate(lang.id, { name: "Long", label: "x".repeat(81), rows, cols: [], cells: {} }), "too long");
+});
+
 console.log(`\n${passed} checks passed`);

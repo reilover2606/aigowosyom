@@ -1203,6 +1203,19 @@ button.danger {
     white-space: nowrap;
 }
 
+/* The optional label over a template's columns, in a row of its own at the top */
+.inflection-table .table-label th.label {
+    font-size: 0.9em;
+    letter-spacing: 0.02em;
+}
+
+.inflection-table .table-label th.corner,
+.inflection-table .table-label th:empty {
+    border-top-color: transparent;
+    border-left-color: transparent;
+    background: none;
+}
+
 /* Tables joined side by side: a quiet line between one template's columns and the next */
 .inflection-table [data-part] {
     border-left: 2px solid var(--border, #c8ccd1);
