@@ -175,16 +175,54 @@ setInterval(() => {
     }
 }, 10000).unref();
 
+// Is the disk itself stalling? A separate thread writes a few bytes to a scratch file in the data folder
+// and flushes it every 10 seconds, away from the database and from the server's own work (so it keeps
+// measuring even while the server is stuck waiting on the disk). One that takes over a second is logged
+// with the time, so a stall can be matched against the system's own log (dmesg) and shown to be the
+// disk and not this program.
+if (SLOW_MS > 0) {
+    const { Worker } = require("node:worker_threads");
+    const probe = new Worker(`
+        const fs = require("node:fs");
+        const { workerData, parentPort } = require("node:worker_threads");
+        const gate = new Int32Array(new SharedArrayBuffer(4));
+        for (;;) {
+            const began = Date.now();
+            try {
+                const fd = fs.openSync(workerData.file, "w");
+                fs.writeSync(fd, String(began));
+                fs.fsyncSync(fd);
+                fs.closeSync(fd);
+                const took = Date.now() - began;
+                if (took > 1000) {
+                    parentPort.postMessage({ took, at: began });
+                }
+            } catch (error) {
+                // the folder is not writable right now: try again
+            }
+            Atomics.wait(gate, 0, 0, 10000);
+        }
+    `, { eval: true, workerData: { file: pathModule.join(config.DATA_DIR, ".disk-probe") } });
+    probe.on("message", ({ took, at }) => {
+        console.warn(`[slow] the disk took ${took} ms to confirm a small write, at ${new Date(at).toLocaleTimeString()}`);
+    });
+    probe.on("error", () => {});
+    probe.unref();
+}
+
 const server = http.createServer(async (req, res) => {
     let url = null;
     const started = Date.now();
+    const cpuAtStart = process.cpuUsage();
     lastRequestAt = started;
 
     if (SLOW_MS > 0) {
         res.on("close", () => {
             const took = Date.now() - started;
             if (took > SLOW_MS) {
-                console.warn(`[slow] ${req.method} ${req.url} took ${took} ms (${databaseSizes().text})`);
+                // How much of the time the program was computing, as against waiting (for the disk, say).
+                const cpu = process.cpuUsage(cpuAtStart);
+                console.warn(`[slow] ${req.method} ${req.url} took ${took} ms, ${Math.round((cpu.user + cpu.system) / 1000)} ms of it computing (${databaseSizes().text})`);
             }
         });
     }
